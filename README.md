@@ -31,6 +31,9 @@
 
 個人投資追蹤工具，非財務建議。
 
+![Alt text](screenshot/1.png)
+![Alt text](screenshot/2.png)
+
 ---
 
 ## Introduction
@@ -61,3 +64,6 @@ My personal Streamlit app for tracking investment cash flows and calculating Int
 ### Disclaimer
 
 Personal tool for tracking my own investments. Not financial advice.
+
+![Alt text](screenshot/1.png)
+![Alt text](screenshot/2.png)
