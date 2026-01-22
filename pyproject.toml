@@ -1,0 +1,11 @@
+[project]
+name = "02-irr-calculator"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.13"
+dependencies = [
+    "pyxirr>=0.10.8",
+    "sqlalchemy>=2.0.45",
+    "streamlit>=1.53.0",
+]
