@@ -37,7 +37,7 @@ if st.button("Save/儲存"):
     st.success("Saved successfully!/儲存成功!")
 
 st.header("Calculate IRR/計算報酬率")
-stock = st.selectbox("Stock code/股票代碼", STOCK_OPTIONS, key="get")  # str
+stock = st.selectbox("Stock code/股票代碼", ["ALL"] + STOCK_OPTIONS, key="get")  # str
 current_value = st.number_input(
     "Current market value/現在市場價值", min_value=0, value=None, format="%d"
 )  # integer
@@ -46,8 +46,12 @@ today = (
 )  # datetime object to conform to pd.to_datetime later
 
 if st.button("Begin calculation/開始計算"):
-    query = "SELECT time, amount FROM log WHERE stock_code = :s"
+    if stock != "ALL":
+        query = "SELECT time, amount FROM log WHERE stock_code = :s"
+    else:
+        query = "SELECT time, amount FROM log"
     df = conn.query(query, params={"s": stock}, ttl=0)
+
     if not current_value or not stock:
         st.warning("Fill in the boxes first!請先填資料!")
     elif df.empty:
