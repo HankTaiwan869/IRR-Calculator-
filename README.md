@@ -1,6 +1,42 @@
-[Scroll down for English version.]
+[-> 跳轉至中文翻譯 <-](#投資報酬率計算機)
 
-# IRR Calculator / 投資報酬率計算機
+# IRR Calculator
+
+## Introduction
+
+My personal Streamlit app for tracking investment cash flows and calculating Internal Rate of Return (IRR) for stock holdings.
+
+### Features
+
+- **Cash Flow Logging**: Record investment transactions with dates and amounts
+- **IRR Calculation**: Calculate both annual and monthly Internal Rate of Return using the XIRR method
+- **Book Profit**: Track total gains/losses based on current market value
+- **30-Year Projection**: Visualize potential investment growth under three scenarios (6.5%, 9%, 11.5% annual returns)
+- **Transaction History**: View all logged transactions
+
+### Usage Notes
+
+- Use **negative values** for investments (money out)
+- Use positive values for withdrawals or dividends
+- Current market value is required for IRR calculation
+
+### Tech Stack
+
+- Streamlit
+- SQLite
+- pyxirr (for XIRR calculations)
+- pandas
+
+### Disclaimer
+
+Personal tool for tracking my own investments. Not financial advice.
+
+![Alt text](screenshot/1.png)
+![Alt text](screenshot/2.png)
+
+---
+
+# 投資報酬率計算機
 
 ## 簡介
 
@@ -35,35 +71,3 @@
 ![Alt text](screenshot/2.png)
 
 ---
-
-## Introduction
-
-My personal Streamlit app for tracking investment cash flows and calculating Internal Rate of Return (IRR) for stock holdings.
-
-### Features
-
-- **Cash Flow Logging**: Record investment transactions with dates and amounts
-- **IRR Calculation**: Calculate both annual and monthly Internal Rate of Return using the XIRR method
-- **Book Profit**: Track total gains/losses based on current market value
-- **30-Year Projection**: Visualize potential investment growth under three scenarios (6.5%, 9%, 11.5% annual returns)
-- **Transaction History**: View all logged transactions
-
-### Usage Notes
-
-- Use **negative values** for investments (money out)
-- Use positive values for withdrawals or dividends
-- Current market value is required for IRR calculation
-
-### Tech Stack
-
-- Streamlit
-- SQLite
-- pyxirr (for XIRR calculations)
-- pandas
-
-### Disclaimer
-
-Personal tool for tracking my own investments. Not financial advice.
-
-![Alt text](screenshot/1.png)
-![Alt text](screenshot/2.png)
