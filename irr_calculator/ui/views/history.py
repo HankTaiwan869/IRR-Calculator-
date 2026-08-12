@@ -1,0 +1,136 @@
+from __future__ import annotations
+
+import json
+
+from PyQt6.QtCore import QSortFilterProxyModel, Qt
+from PyQt6.QtWidgets import (
+    QHBoxLayout, QLineEdit, QMessageBox, QPushButton, QTableView, QTextEdit,
+    QVBoxLayout, QWidget, QDialog, QDialogButtonBox,
+)
+from sqlalchemy import select
+
+from ...exceptions import ValidationError
+from ...models import Portfolio, Security, Transaction, TransactionAudit
+from ...services.transactions import delete_transaction, edit_transaction, restore_transaction
+from ..dialogs import TransactionDialog
+from ..models import TransactionTableModel
+
+
+class HistoryView(QWidget):
+    def __init__(self, session_factory, parent=None) -> None:
+        super().__init__(parent)
+        self.factory = session_factory
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(4, 4, 12, 20)
+        toolbar = QHBoxLayout()
+        self.search = QLineEdit()
+        self.search.setPlaceholderText("Filter portfolio, security, kind, or date…")
+        toolbar.addWidget(self.search, 1)
+        self.delete_button = QPushButton("Delete")
+        self.delete_button.setObjectName("danger")
+        self.restore_button = QPushButton("Restore")
+        audit_button = QPushButton("Audit details")
+        edit_button = QPushButton("Edit")
+        toolbar.addWidget(audit_button)
+        toolbar.addWidget(edit_button)
+        toolbar.addWidget(self.restore_button)
+        toolbar.addWidget(self.delete_button)
+        layout.addLayout(toolbar)
+
+        self.model = TransactionTableModel()
+        self.proxy = QSortFilterProxyModel(self)
+        self.proxy.setSourceModel(self.model)
+        self.proxy.setFilterKeyColumn(-1)
+        self.proxy.setFilterCaseSensitivity(Qt.CaseSensitivity.CaseInsensitive)
+        self.table = QTableView()
+        self.table.setModel(self.proxy)
+        self.table.setSortingEnabled(True)
+        self.table.setAlternatingRowColors(True)
+        self.table.setSelectionBehavior(QTableView.SelectionBehavior.SelectRows)
+        self.table.horizontalHeader().setStretchLastSection(True)
+        layout.addWidget(self.table, 1)
+        self.search.textChanged.connect(self.proxy.setFilterFixedString)
+        self.delete_button.clicked.connect(self.delete_selected)
+        self.restore_button.clicked.connect(self.restore_selected)
+        audit_button.clicked.connect(self.show_audit)
+        edit_button.clicked.connect(self.edit_selected)
+        self.reload()
+
+    def reload(self) -> None:
+        with self.factory() as session:
+            records = session.execute(
+                select(Transaction, Portfolio.name, Security.symbol)
+                .join(Portfolio, Portfolio.id == Transaction.portfolio_id)
+                .outerjoin(Security, Security.id == Transaction.security_id)
+                .order_by(Transaction.trade_date.desc(), Transaction.id.desc())
+            ).all()
+        rows = []
+        for transaction, portfolio, symbol in records:
+            rows.append((transaction.id, transaction.trade_date, portfolio, symbol or "—", transaction.kind.replace("_", " "), transaction.shares_delta, transaction.external_cash_flow, transaction.income_amount, "Deleted" if transaction.deleted_at else "Active"))
+        self.model.set_rows(rows)
+        self.table.resizeColumnsToContents()
+
+    def _selected_id(self) -> int | None:
+        indexes = self.table.selectionModel().selectedRows()
+        if not indexes:
+            QMessageBox.information(self, "History", "Select a transaction first.")
+            return None
+        source = self.proxy.mapToSource(indexes[0])
+        return int(self.model.data(source, Qt.ItemDataRole.UserRole))
+
+    def delete_selected(self) -> None:
+        transaction_id = self._selected_id()
+        if transaction_id is None or QMessageBox.question(self, "Delete transaction", "Soft-delete the selected transaction? The change will be audited.") != QMessageBox.StandardButton.Yes:
+            return
+        try:
+            with self.factory.begin() as session:
+                delete_transaction(session, transaction_id)
+        except ValidationError as error:
+            QMessageBox.warning(self, "Delete transaction", str(error))
+        self.reload()
+
+    def edit_selected(self) -> None:
+        transaction_id = self._selected_id()
+        if transaction_id is None:
+            return
+        with self.factory() as session:
+            transaction = session.get(Transaction, transaction_id)
+        dialog = TransactionDialog(self.factory, transaction, self)
+        if dialog.exec() != dialog.DialogCode.Accepted or dialog.result_data is None:
+            return
+        try:
+            with self.factory.begin() as session:
+                edit_transaction(session, transaction_id, dialog.result_data)
+        except ValidationError as error:
+            QMessageBox.warning(self, "Edit transaction", str(error))
+        self.reload()
+
+    def restore_selected(self) -> None:
+        transaction_id = self._selected_id()
+        if transaction_id is None:
+            return
+        try:
+            with self.factory.begin() as session:
+                restore_transaction(session, transaction_id)
+        except ValidationError as error:
+            QMessageBox.warning(self, "Restore transaction", str(error))
+        self.reload()
+
+    def show_audit(self) -> None:
+        transaction_id = self._selected_id()
+        if transaction_id is None:
+            return
+        with self.factory() as session:
+            records = list(session.scalars(select(TransactionAudit).where(TransactionAudit.transaction_id == transaction_id).order_by(TransactionAudit.id)))
+        dialog = QDialog(self)
+        dialog.setWindowTitle("Transaction audit")
+        dialog.resize(720, 480)
+        layout = QVBoxLayout(dialog)
+        text = QTextEdit()
+        text.setReadOnly(True)
+        text.setPlainText("\n\n".join(f"{item.created_at} — {item.action}\nBefore: {json.dumps(item.before, indent=2)}\nAfter: {json.dumps(item.after, indent=2)}" for item in records) or "No audit entries.")
+        buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Close)
+        buttons.rejected.connect(dialog.reject)
+        layout.addWidget(text)
+        layout.addWidget(buttons)
+        dialog.exec()

@@ -6,6 +6,8 @@ env/
 # Python cache
 __pycache__/
 *.py[cod]
+.pytest_cache/
+.coverage
 
 # Environment variables / Secrets
 .env

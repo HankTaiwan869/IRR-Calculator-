@@ -1,73 +1,63 @@
-[-> 跳轉至中文翻譯 <-](#投資報酬率計算機)
-
 # IRR Calculator
 
-## Introduction
+IRR Calculator is a local, English-language PyQt6 desktop application for tracking Taiwan securities in TWD. It keeps named portfolios, signed-share transactions, delayed daily prices, moving-average cost basis, realized and unrealized profit, dividend income, XIRR, and 30-year projections in a local SQLite database.
 
-My personal Streamlit app for tracking investment cash flows and calculating Internal Rate of Return (IRR) for stock holdings.
+The application is for personal record keeping and is not financial advice.
 
-### Features
+## Install and run
 
-- **Cash Flow Logging**: Record investment transactions with dates and amounts
-- **IRR Calculation**: Calculate both annual and monthly Internal Rate of Return using the XIRR method
-- **Book Profit**: Track total gains/losses based on current market value
-- **30-Year Projection**: Visualize potential investment growth under three scenarios (6.5%, 9%, 11.5% annual returns)
-- **Transaction History**: View all logged transactions
+Python 3.11 or newer and [uv](https://docs.astral.sh/uv/) are required.
 
-### Usage Notes
+```powershell
+uv sync --dev
+uv run irr-calculator
+```
 
-- Use **negative values** for investments (money out)
-- Use positive values for withdrawals or dividends
-- Current market value is required for IRR calculation
+For a development launch, `uv run python main.py` is equivalent. Run the test suite with:
 
-### Tech Stack
+```powershell
+uv run pytest
+```
 
-- Streamlit
-- SQLite
-- pyxirr (for XIRR calculations)
-- pandas
+Startup is deliberately offline. The application does not read credentials, contact FinMind, or import the charting backend until the associated feature is used.
 
-### Disclaimer
+## First use
 
-Personal tool for tracking my own investments. Not financial advice.
+1. Open **Settings & Import** and save a FinMind API token. The token is stored by `keyring` in Windows Credential Manager, not in SQLite or preferences.
+2. Select **Sync Security Master**. Security codes and Chinese provider names are then searchable locally.
+3. Create portfolios and add transactions.
+4. Use **Refresh Prices** on the Dashboard when you want updated delayed closing prices.
 
-![Alt text](screenshot/1.png)
-![Alt text](screenshot/2.png)
+FinMind is the default data provider. Its `TaiwanStockInfo` and `TaiwanStockPrice` datasets supply the searchable security master and delayed daily closes. Availability, quotas, and accuracy remain subject to FinMind's service; verify important values independently.
 
----
+## Accounting conventions
 
-# 投資報酬率計算機
+- A **buy** has positive shares and negative external cash. The cash flow equals the negative trade amount and fees.
+- A **sell** has negative shares and positive external cash. The cash flow equals gross proceeds less fees.
+- A **paid-out dividend** has zero shares and positive income/external cash.
+- A **reinvested dividend** has positive acquired shares, dividend income, and acquisition cost. A fully reinvested dividend has zero external cash flow. If income and purchase cost plus fees differ, enter the positive paid remainder or negative owner top-up as the external cash flow.
+- An **opening position** records reconciled shares with zero cash. Its optional total cost seeds moving-average basis; basis-dependent results are marked incomplete when that cost is omitted.
 
-## 簡介
+Holdings are derived by replaying transactions in date-and-ID order. Buys and reinvestments add acquisition cost; sells relieve the pre-sale moving-average cost. Corrections are soft deletes or edits with before/after audit records. Transactions that would make a holding negative at any later point are rejected.
 
-我的個人 Streamlit 應用程式，用於追蹤投資現金流並計算股票持倉的內部報酬率（IRR）。
+XIRR measures owner-level external cash. It includes a terminal market-value flow on the valuation date, but excludes fully reinvested dividends because they are internal to the portfolio. A result is shown as **Not calculable** if prices are missing or cash flows lack both signs.
 
-### 功能特色
+## Data, backup, and migration
 
-- **現金流紀錄**: 記錄投資交易的日期和金額
-- **IRR 計算**: 使用 XIRR 方法計算年化和月化內部報酬率
-- **帳面盈虧**: 根據目前市場價值追蹤總損益
-- **30年預測**: 在三種情境下（6.5%、9%、11.5% 年報酬率）視覺化呈現潛在投資成長
-- **交易歷史**: 查看所有記錄的交易
+The database and non-secret preferences are stored under:
 
-### 使用說明
+```text
+%LOCALAPPDATA%\IRRCalculator
+```
 
-- 投資金額請使用**負數**（資金流出）
-- 提款或股利請使用正數
-- 計算 IRR 需要輸入目前市場價值
+Back up `portfolio.sqlite3` while the application is closed. Price history is cached in the same database.
 
-### 技術堆疊
+The legacy importer accepts the original SQLite `log(id, stock_code, time, amount)` table. Before importing, it makes a timestamped copy beside the selected source (or in the requested backup directory). The import is content-fingerprinted and idempotent: choosing an unchanged source twice creates no duplicates. Legacy amounts remain owner cash flows in an **Imported portfolio**. Because the old data has no shares or cost information, reconcile each security with an opening position afterward. Legacy stock codes may need to be matched to current FinMind securities manually.
 
-- Streamlit
-- SQLite
-- pyxirr (XIRR 計算)
-- pandas
+## Scope
 
-### 免責聲明
+Version 1 is local and single-user, supports Taiwan securities and TWD only, and refreshes delayed prices manually. It does not provide brokerage synchronization, real-time pricing, tax reporting, corporate-action automation, cloud sync, multi-currency accounting, or FIFO/LIFO basis.
 
-個人投資追蹤工具，非財務建議。
+The interface is English-only. Chinese security names are retained solely as searchable market data.
 
-![Alt text](screenshot/1.png)
-![Alt text](screenshot/2.png)
-
----
+![Desktop dashboard](screenshot/desktop.png)
