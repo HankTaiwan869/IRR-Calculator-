@@ -1,3 +1,5 @@
+from itertools import pairwise
+
 from PyQt6.QtCore import Qt
 from PyQt6.QtWidgets import QFormLayout, QGroupBox
 
@@ -62,7 +64,7 @@ def test_accounting_details_form_has_room_between_rows(qtbot, db):
     assert all(field.height() >= 42 for field in fields)
     gaps = [
         lower.geometry().top() - upper.geometry().bottom() - 1
-        for upper, lower in zip(fields, fields[1:])
+        for upper, lower in pairwise(fields)
     ]
     assert min(gaps) >= 14
     assert window.transactions.verticalScrollBar().maximum() > 0

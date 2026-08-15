@@ -1,9 +1,12 @@
 from __future__ import annotations
 
 import pytest
-from sqlalchemy.orm import Session
 
-from irr_calculator.database import create_database_engine, initialize_database, session_factory
+from irr_calculator.database import (
+    create_database_engine,
+    initialize_database,
+    session_factory,
+)
 from irr_calculator.models import Portfolio, Security
 
 
@@ -14,7 +17,13 @@ def db(tmp_path):
     factory = session_factory(engine)
     with factory.begin() as session:
         portfolio = Portfolio(name="Core")
-        security = Security(provider="FinMind", symbol="2330", name_zh="台積電", exchange="twse", security_type="stock")
+        security = Security(
+            provider="FinMind",
+            symbol="2330",
+            name_zh="台積電",
+            exchange="twse",
+            security_type="stock",
+        )
         session.add_all((portfolio, security))
         session.flush()
         ids = (portfolio.id, security.id)

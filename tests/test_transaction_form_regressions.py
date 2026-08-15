@@ -53,8 +53,11 @@ def test_security_is_plain_text_and_resolves_exactly_on_save(qtbot, db, monkeypa
     _engine, factory, _ids = db
     with factory.begin() as session:
         security = Security(
-            provider="FinMind", symbol="00692", name_zh="富邦公司治理",
-            exchange="twse", security_type="etf",
+            provider="FinMind",
+            symbol="00692",
+            name_zh="富邦公司治理",
+            exchange="twse",
+            security_type="etf",
         )
         session.add(security)
         session.flush()
@@ -69,9 +72,14 @@ def test_security_is_plain_text_and_resolves_exactly_on_save(qtbot, db, monkeypa
 
     captured = []
     warnings = []
-    monkeypatch.setattr("irr_calculator.ui.views.transactions.create_transaction", lambda _session, data: captured.append(data))
+    monkeypatch.setattr(
+        "irr_calculator.ui.views.transactions.create_transaction",
+        lambda _session, data: captured.append(data),
+    )
     monkeypatch.setattr(QMessageBox, "information", lambda *_args: None)
-    monkeypatch.setattr(QMessageBox, "warning", lambda *_args: warnings.append(_args[-1]))
+    monkeypatch.setattr(
+        QMessageBox, "warning", lambda *_args: warnings.append(_args[-1])
+    )
     view.shares.setValue(1)
     view.trade_amount.setValue(100)
     view.cash_flow.setValue(-100)
@@ -118,7 +126,10 @@ def test_create_form_submits_integer_values(qtbot, db, monkeypatch):
     view = TransactionsView(factory)
     qtbot.addWidget(view)
     captured = []
-    monkeypatch.setattr("irr_calculator.ui.views.transactions.create_transaction", lambda _session, data: captured.append(data))
+    monkeypatch.setattr(
+        "irr_calculator.ui.views.transactions.create_transaction",
+        lambda _session, data: captured.append(data),
+    )
     monkeypatch.setattr(QMessageBox, "information", lambda *_args: None)
 
     view.kind.setCurrentIndex(view.kind.findData(TransactionKind.BUY))
@@ -129,7 +140,12 @@ def test_create_form_submits_integer_values(qtbot, db, monkeypatch):
     view.save()
 
     data = captured[0]
-    for value in (data.shares_delta, data.external_cash_flow, data.trade_amount, data.income_amount):
+    for value in (
+        data.shares_delta,
+        data.external_cash_flow,
+        data.trade_amount,
+        data.income_amount,
+    ):
         assert type(value) is int
 
 
@@ -150,7 +166,14 @@ def test_removed_transaction_inputs_are_absent_from_create_and_edit_forms(qtbot,
     qtbot.addWidget(view)
     qtbot.addWidget(dialog)
 
-    removed = {"Exchange", "Security type", "Unit price (optional)", "Unit price", "Fees", "Notes"}
+    removed = {
+        "Exchange",
+        "Security type",
+        "Unit price (optional)",
+        "Unit price",
+        "Fees",
+        "Notes",
+    }
     assert removed.isdisjoint(label.text() for label in view.findChildren(QLabel))
     assert removed.isdisjoint(label.text() for label in dialog.findChildren(QLabel))
 

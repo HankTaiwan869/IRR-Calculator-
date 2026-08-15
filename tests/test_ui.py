@@ -1,4 +1,4 @@
-from PyQt6.QtCore import QTimer, Qt
+from PyQt6.QtCore import Qt, QTimer
 from PyQt6.QtGui import QIcon
 
 from irr_calculator.app import application_icon_path
@@ -39,7 +39,10 @@ def test_main_window_navigation_and_deferred_plotly_chart(qtbot, db):
 
 def test_transaction_table_model():
     from irr_calculator.ui.models import TransactionTableModel
-    model = TransactionTableModel([(42, "2025-01-01", "Core", "2330", "BUY", 10, -100, 0, "Active")])
+
+    model = TransactionTableModel(
+        [(42, "2025-01-01", "Core", "2330", "BUY", 10, -100, 0, "Active")]
+    )
     assert model.rowCount() == 1
     assert model.columnCount() == 8
     assert model.index(0, 0).data() == "2025-01-01"
@@ -49,5 +52,6 @@ def test_transaction_table_model():
 def test_application_icon_is_available():
     icon_path = application_icon_path()
     assert icon_path.name == "investment.ico"
+    assert icon_path.parent.name == "assets"
     assert icon_path.is_file()
     assert not QIcon(str(icon_path)).isNull()

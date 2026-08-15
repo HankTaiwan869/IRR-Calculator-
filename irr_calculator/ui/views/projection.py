@@ -1,13 +1,19 @@
 from __future__ import annotations
 
-from datetime import date
+from datetime import datetime
 from pathlib import Path
 
 from PyQt6.QtCore import Qt, QUrl
 from PyQt6.QtWebEngineWidgets import QWebEngineView
 from PyQt6.QtWidgets import (
-    QComboBox, QDoubleSpinBox, QGridLayout, QLabel, QScrollArea, QSpinBox,
-    QVBoxLayout, QWidget,
+    QComboBox,
+    QDoubleSpinBox,
+    QGridLayout,
+    QLabel,
+    QScrollArea,
+    QSpinBox,
+    QVBoxLayout,
+    QWidget,
 )
 from sqlalchemy import select
 
@@ -62,7 +68,9 @@ class ProjectionView(QScrollArea):
         controls.setColumnStretch(3, 1)
         layout.addLayout(controls)
 
-        self.chart_placeholder = QLabel("The projection chart loads when this tab is opened.")
+        self.chart_placeholder = QLabel(
+            "The projection chart loads when this tab is opened."
+        )
         self.chart_placeholder.setObjectName("muted")
         self.chart_placeholder.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.chart_placeholder.setMinimumHeight(360)
@@ -97,6 +105,7 @@ class ProjectionView(QScrollArea):
         if self.chart is not None:
             return
         import plotly
+
         self.chart = QWebEngineView()
         plotly_dir = Path(plotly.__file__).resolve().parent / "package_data"
         self._plotly_base_url = QUrl.fromLocalFile(f"{plotly_dir}/")
@@ -109,7 +118,11 @@ class ProjectionView(QScrollArea):
         if self.portfolio.count() == 0 or self.chart is None:
             return
         with self.factory() as session:
-            summary = portfolio_summary(session, date.today(), self.portfolio.currentData())
+            summary = portfolio_summary(
+                session,
+                datetime.now().astimezone().date(),
+                self.portfolio.currentData(),
+            )
 
         import plotly.graph_objects as go
         import plotly.io as pio
@@ -120,7 +133,11 @@ class ProjectionView(QScrollArea):
         if scenarios is None:
             figure.add_annotation(
                 text="Projection unavailable until all open holdings have prices.",
-                x=.5, y=.5, xref="paper", yref="paper", showarrow=False,
+                x=0.5,
+                y=0.5,
+                xref="paper",
+                yref="paper",
+                showarrow=False,
             )
             figure.update_xaxes(visible=False)
             figure.update_yaxes(visible=False)
@@ -128,16 +145,27 @@ class ProjectionView(QScrollArea):
             labels = tuple(f"{control.value():g}%" for control in self.rates)
             for values, label in zip(scenarios, labels, strict=True):
                 figure.add_scatter(
-                    x=list(range(len(values))), y=values, mode="lines", name=label,
+                    x=list(range(len(values))),
+                    y=values,
+                    mode="lines",
+                    name=label,
                     hovertemplate="Year %{x}<br>NT$ %{y:,.0f}<extra>%{fullData.name}</extra>",
                 )
-            figure.update_xaxes(title_text="Year", dtick=5 if self.years.value() >= 20 else 1)
+            figure.update_xaxes(
+                title_text="Year", dtick=5 if self.years.value() >= 20 else 1
+            )
             figure.update_yaxes(title_text="TWD", tickformat=",.0f")
         figure.update_layout(
             template="plotly_white",
-            margin=dict(l=70, r=30, t=30, b=60),
+            margin={"l": 70, "r": 30, "t": 30, "b": 60},
             hovermode="x unified",
-            legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
+            legend={
+                "orientation": "h",
+                "yanchor": "bottom",
+                "y": 1.02,
+                "xanchor": "right",
+                "x": 1,
+            },
         )
         html = pio.to_html(
             figure,

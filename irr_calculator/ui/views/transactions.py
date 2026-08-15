@@ -4,13 +4,23 @@ from datetime import date
 
 from PyQt6.QtCore import QDate, Qt, pyqtSignal
 from PyQt6.QtWidgets import (
-    QComboBox, QDateEdit, QDoubleSpinBox, QFormLayout, QGroupBox, QHBoxLayout,
-    QLabel, QLayout, QLineEdit, QMessageBox, QPushButton, QScrollArea, QVBoxLayout,
+    QComboBox,
+    QDateEdit,
+    QDoubleSpinBox,
+    QFormLayout,
+    QGroupBox,
+    QHBoxLayout,
+    QLabel,
+    QLayout,
+    QLineEdit,
+    QMessageBox,
+    QPushButton,
+    QScrollArea,
+    QVBoxLayout,
     QWidget,
 )
 from sqlalchemy import select
 
-from ...exceptions import ValidationError
 from ...models import Portfolio, Security, TransactionKind
 from ...services.transactions import TransactionInput, create_transaction
 
@@ -97,11 +107,19 @@ class TransactionsView(QScrollArea):
     def reload_context(self) -> None:
         selected_portfolio = self.portfolio.currentData()
         with self.factory() as session:
-            portfolios = list(session.scalars(select(Portfolio).where(Portfolio.archived_at.is_(None)).order_by(Portfolio.name)))
+            portfolios = list(
+                session.scalars(
+                    select(Portfolio)
+                    .where(Portfolio.archived_at.is_(None))
+                    .order_by(Portfolio.name)
+                )
+            )
         self.portfolio.clear()
         for item in portfolios:
             self.portfolio.addItem(item.name, item.id)
-        self.portfolio.setCurrentIndex(max(self.portfolio.findData(selected_portfolio), 0))
+        self.portfolio.setCurrentIndex(
+            max(self.portfolio.findData(selected_portfolio), 0)
+        )
 
     def _kind_changed(self) -> None:
         kind = self.kind.currentData()
@@ -110,10 +128,10 @@ class TransactionsView(QScrollArea):
         opening = kind is TransactionKind.OPENING_POSITION
         self.help.setText(
             "Fully reinvested dividends normally have zero external cash flow; any difference must be entered as a paid remainder (+) or owner top-up (-)."
-            if reinvested else
-            "Opening positions reconcile existing shares with zero external cash. Total cost is optional; omitting it marks cost basis incomplete."
-            if opening else
-            "Buys use positive shares and negative cash. Sells use negative shares and positive cash."
+            if reinvested
+            else "Opening positions reconcile existing shares with zero external cash. Total cost is optional; omitting it marks cost basis incomplete."
+            if opening
+            else "Buys use positive shares and negative cash. Sells use negative shares and positive cash."
         )
         self._set_applicable(self.income, reinvested or dividend)
         self._set_applicable(self.trade_amount, not dividend)
@@ -131,7 +149,9 @@ class TransactionsView(QScrollArea):
         portfolio_id = self.portfolio.currentData()
         symbol = self.security.text().strip()
         if portfolio_id is None or not symbol:
-            QMessageBox.warning(self, "Transaction", "Choose a portfolio and enter a security symbol.")
+            QMessageBox.warning(
+                self, "Transaction", "Choose a portfolio and enter a security symbol."
+            )
             return
         with self.factory() as session:
             security_id = session.scalar(
@@ -142,20 +162,26 @@ class TransactionsView(QScrollArea):
             )
         if security_id is None:
             QMessageBox.warning(
-                self, "Transaction", f'No active security has the exact symbol "{symbol}". Sync the security master first if needed.',
+                self,
+                "Transaction",
+                f'No active security has the exact symbol "{symbol}". Sync the security master first if needed.',
             )
             return
         qdate = self.trade_date.date()
         data = TransactionInput(
-            portfolio_id=portfolio_id, security_id=security_id,
-            kind=self.kind.currentData(), trade_date=date(qdate.year(), qdate.month(), qdate.day()),
-            shares_delta=int(self.shares.value()), external_cash_flow=int(self.cash_flow.value()),
-            trade_amount=int(self.trade_amount.value()), income_amount=int(self.income.value()),
+            portfolio_id=portfolio_id,
+            security_id=security_id,
+            kind=self.kind.currentData(),
+            trade_date=date(qdate.year(), qdate.month(), qdate.day()),
+            shares_delta=int(self.shares.value()),
+            external_cash_flow=int(self.cash_flow.value()),
+            trade_amount=int(self.trade_amount.value()),
+            income_amount=int(self.income.value()),
         )
         try:
             with self.factory.begin() as session:
                 create_transaction(session, data)
-        except (ValidationError, Exception) as error:
+        except Exception as error:  # noqa: BLE001 - report database and validation failures in the UI
             QMessageBox.warning(self, "Transaction not saved", str(error))
             return
         QMessageBox.information(self, "Transaction", "Transaction saved.")

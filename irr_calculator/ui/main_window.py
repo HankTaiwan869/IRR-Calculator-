@@ -1,26 +1,43 @@
 from __future__ import annotations
 
-from datetime import date
+from datetime import datetime
 
-from PyQt6.QtCore import QThreadPool, QTimer, Qt
+from PyQt6.QtCore import QThreadPool, QTimer
 from PyQt6.QtGui import QAction, QKeySequence
 from PyQt6.QtWidgets import (
-    QFrame, QHBoxLayout, QLabel, QMainWindow, QMessageBox, QPushButton,
-    QStackedWidget, QVBoxLayout, QWidget,
+    QHBoxLayout,
+    QLabel,
+    QMainWindow,
+    QMessageBox,
+    QPushButton,
+    QStackedWidget,
+    QVBoxLayout,
+    QWidget,
 )
 
 from ..preferences import get_finmind_token
 from ..providers import FinMindProvider
 from ..services.quotes import refresh_prices
 from .views import (
-    DashboardView, HistoryView, PortfoliosView, ProjectionView, SettingsImportView,
+    DashboardView,
+    HistoryView,
+    PortfoliosView,
+    ProjectionView,
+    SettingsView,
     TransactionsView,
 )
 from .workers import FunctionWorker
 
 
 class MainWindow(QMainWindow):
-    PAGE_NAMES = ("Dashboard", "Projection", "Transactions", "History", "Portfolios", "Settings")
+    PAGE_NAMES = (
+        "Dashboard",
+        "Projection",
+        "Transactions",
+        "History",
+        "Portfolios",
+        "Settings",
+    )
 
     def __init__(self, session_factory, parent=None) -> None:
         super().__init__(parent)
@@ -49,7 +66,9 @@ class MainWindow(QMainWindow):
             button = QPushButton(name)
             button.setObjectName("navButton")
             button.setCheckable(True)
-            button.clicked.connect(lambda _checked=False, page=index: self.show_page(page))
+            button.clicked.connect(
+                lambda _checked=False, page=index: self.show_page(page)
+            )
             self.nav_buttons.append(button)
             side_layout.addWidget(button)
         side_layout.addStretch()
@@ -73,8 +92,15 @@ class MainWindow(QMainWindow):
         self.transactions = TransactionsView(self.factory)
         self.history = HistoryView(self.factory)
         self.portfolios = PortfoliosView(self.factory)
-        self.settings = SettingsImportView(self.factory)
-        for page in (self.dashboard, self.projection, self.transactions, self.history, self.portfolios, self.settings):
+        self.settings = SettingsView(self.factory)
+        for page in (
+            self.dashboard,
+            self.projection,
+            self.transactions,
+            self.history,
+            self.portfolios,
+            self.settings,
+        ):
             self.stack.addWidget(page)
         main_layout.addWidget(self.stack, 1)
         outer.addWidget(main, 1)
@@ -91,11 +117,15 @@ class MainWindow(QMainWindow):
     def _create_actions(self) -> None:
         refresh = QAction("Refresh Prices", self)
         refresh.setShortcut(QKeySequence("Ctrl+R"))
-        refresh.triggered.connect(lambda: self.refresh_prices(self.dashboard.portfolio.currentData(), False))
+        refresh.triggered.connect(
+            lambda: self.refresh_prices(self.dashboard.portfolio.currentData(), False)
+        )
         self.addAction(refresh)
         new_transaction = QAction("New Transaction", self)
         new_transaction.setShortcut(QKeySequence("Ctrl+N"))
-        new_transaction.triggered.connect(lambda: self.show_page(self.PAGE_NAMES.index("Transactions")))
+        new_transaction.triggered.connect(
+            lambda: self.show_page(self.PAGE_NAMES.index("Transactions"))
+        )
         self.addAction(new_transaction)
         focus_search = QAction("Focus History Filter", self)
         focus_search.setShortcut(QKeySequence("Ctrl+F"))
@@ -129,7 +159,10 @@ class MainWindow(QMainWindow):
 
     def showEvent(self, event) -> None:  # type: ignore[no-untyped-def]
         super().showEvent(event)
-        if self.PAGE_NAMES[self.stack.currentIndex()] == "Projection" and self.projection.chart is None:
+        if (
+            self.PAGE_NAMES[self.stack.currentIndex()] == "Projection"
+            and self.projection.chart is None
+        ):
             QTimer.singleShot(0, self.projection.ensure_chart)
 
     def _reload_data(self) -> None:
@@ -142,17 +175,30 @@ class MainWindow(QMainWindow):
     def refresh_prices(self, portfolio_id: int | None, retry: bool = False) -> None:
         try:
             token = get_finmind_token()
-        except Exception as error:
-            QMessageBox.warning(self, "Refresh Prices", f"The FinMind token could not be read: {error}")
+        except Exception as error:  # noqa: BLE001 - credential backend boundary
+            QMessageBox.warning(
+                self, "Refresh Prices", f"The FinMind token could not be read: {error}"
+            )
             return
         if not token:
-            QMessageBox.information(self, "Refresh Prices", "Save a FinMind token under Settings first.")
+            QMessageBox.information(
+                self, "Refresh Prices", "Save a FinMind token under Settings first."
+            )
             return
         self.statusBar().showMessage("Refreshing daily prices…")
-        worker = FunctionWorker(lambda: refresh_prices(self.factory, FinMindProvider(token), date.today(), portfolio_id, retry))
+        today = datetime.now().astimezone().date()
+        worker = FunctionWorker(
+            lambda: refresh_prices(
+                self.factory, FinMindProvider(token), today, portfolio_id, retry
+            )
+        )
         worker.signals.result.connect(self._refresh_complete)
-        worker.signals.error.connect(lambda error: QMessageBox.warning(self, "Refresh Prices", error))
-        worker.signals.finished.connect(lambda: self.statusBar().showMessage("Ready", 3000))
+        worker.signals.error.connect(
+            lambda error: QMessageBox.warning(self, "Refresh Prices", error)
+        )
+        worker.signals.finished.connect(
+            lambda: self.statusBar().showMessage("Ready", 3000)
+        )
         self.pool.start(worker)
 
     def _refresh_complete(self, result: object) -> None:
@@ -163,7 +209,9 @@ class MainWindow(QMainWindow):
         cached = len(getattr(result, "cached", ()))
         message = f"Refreshed {refreshed}; already cached {cached}."
         if failures:
-            message += "\n\nFailures:\n" + "\n".join(f"{symbol}: {error}" for symbol, error in failures)
+            message += "\n\nFailures:\n" + "\n".join(
+                f"{symbol}: {error}" for symbol, error in failures
+            )
             QMessageBox.warning(self, "Refresh completed with errors", message)
         else:
             self.statusBar().showMessage(message, 5000)

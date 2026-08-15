@@ -1,7 +1,7 @@
 from __future__ import annotations
 
+from collections.abc import Iterable
 from dataclasses import dataclass
-from typing import Iterable
 
 from ..exceptions import ValidationError
 from ..models import Transaction, TransactionKind
@@ -36,7 +36,11 @@ def replay_ledger(rows: Iterable[Transaction]) -> LedgerResult:
         if row.deleted_at is not None:
             continue
         kind = TransactionKind(row.kind)
-        if kind in (TransactionKind.BUY, TransactionKind.REINVESTED_DIVIDEND, TransactionKind.OPENING_POSITION):
+        if kind in (
+            TransactionKind.BUY,
+            TransactionKind.REINVESTED_DIVIDEND,
+            TransactionKind.OPENING_POSITION,
+        ):
             shares += row.shares_delta
             basis += row.trade_amount
             if kind is TransactionKind.OPENING_POSITION and row.trade_amount == ZERO:
@@ -45,9 +49,13 @@ def replay_ledger(rows: Iterable[Transaction]) -> LedgerResult:
                 dividends += row.income_amount
         elif kind is TransactionKind.SELL:
             if shares <= ZERO or shares + row.shares_delta < ZERO:
-                raise ValidationError("Ledger contains a sale exceeding the available shares.")
+                raise ValidationError(
+                    "Ledger contains a sale exceeding the available shares."
+                )
             sold = -row.shares_delta
-            relieved = basis if sold == shares else _divide_round_half_up(basis * sold, shares)
+            relieved = (
+                basis if sold == shares else _divide_round_half_up(basis * sold, shares)
+            )
             realized += row.external_cash_flow - relieved
             shares -= sold
             basis -= relieved

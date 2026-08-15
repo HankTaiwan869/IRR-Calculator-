@@ -4,14 +4,26 @@ import json
 
 from PyQt6.QtCore import QSortFilterProxyModel, Qt, pyqtSignal
 from PyQt6.QtWidgets import (
-    QHBoxLayout, QLineEdit, QMessageBox, QPushButton, QTableView, QTextEdit,
-    QVBoxLayout, QWidget, QDialog, QDialogButtonBox,
+    QDialog,
+    QDialogButtonBox,
+    QHBoxLayout,
+    QLineEdit,
+    QMessageBox,
+    QPushButton,
+    QTableView,
+    QTextEdit,
+    QVBoxLayout,
+    QWidget,
 )
 from sqlalchemy import select
 
 from ...exceptions import ValidationError
 from ...models import Portfolio, Security, Transaction, TransactionAudit
-from ...services.transactions import delete_transaction, edit_transaction, restore_transaction
+from ...services.transactions import (
+    delete_transaction,
+    edit_transaction,
+    restore_transaction,
+)
 from ..dialogs import TransactionDialog
 from ..models import TransactionTableModel
 
@@ -69,7 +81,19 @@ class HistoryView(QWidget):
             ).all()
         rows = []
         for transaction, portfolio, symbol in records:
-            rows.append((transaction.id, transaction.trade_date, portfolio, symbol or "—", transaction.kind.replace("_", " "), transaction.shares_delta, transaction.external_cash_flow, transaction.income_amount, "Deleted" if transaction.deleted_at else "Active"))
+            rows.append(
+                (
+                    transaction.id,
+                    transaction.trade_date,
+                    portfolio,
+                    symbol or "—",
+                    transaction.kind.replace("_", " "),
+                    transaction.shares_delta,
+                    transaction.external_cash_flow,
+                    transaction.income_amount,
+                    "Deleted" if transaction.deleted_at else "Active",
+                )
+            )
         self.model.set_rows(rows)
         self.table.resizeColumnsToContents()
 
@@ -83,7 +107,15 @@ class HistoryView(QWidget):
 
     def delete_selected(self) -> None:
         transaction_id = self._selected_id()
-        if transaction_id is None or QMessageBox.question(self, "Delete transaction", "Soft-delete the selected transaction? The change will be audited.") != QMessageBox.StandardButton.Yes:
+        if (
+            transaction_id is None
+            or QMessageBox.question(
+                self,
+                "Delete transaction",
+                "Soft-delete the selected transaction? The change will be audited.",
+            )
+            != QMessageBox.StandardButton.Yes
+        ):
             return
         try:
             with self.factory.begin() as session:
@@ -127,14 +159,26 @@ class HistoryView(QWidget):
         if transaction_id is None:
             return
         with self.factory() as session:
-            records = list(session.scalars(select(TransactionAudit).where(TransactionAudit.transaction_id == transaction_id).order_by(TransactionAudit.id)))
+            records = list(
+                session.scalars(
+                    select(TransactionAudit)
+                    .where(TransactionAudit.transaction_id == transaction_id)
+                    .order_by(TransactionAudit.id)
+                )
+            )
         dialog = QDialog(self)
         dialog.setWindowTitle("Transaction audit")
         dialog.resize(720, 480)
         layout = QVBoxLayout(dialog)
         text = QTextEdit()
         text.setReadOnly(True)
-        text.setPlainText("\n\n".join(f"{item.created_at} — {item.action}\nBefore: {json.dumps(item.before, indent=2)}\nAfter: {json.dumps(item.after, indent=2)}" for item in records) or "No audit entries.")
+        text.setPlainText(
+            "\n\n".join(
+                f"{item.created_at} — {item.action}\nBefore: {json.dumps(item.before, indent=2)}\nAfter: {json.dumps(item.after, indent=2)}"
+                for item in records
+            )
+            or "No audit entries."
+        )
         buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Close)
         buttons.rejected.connect(dialog.reject)
         layout.addWidget(text)

@@ -22,7 +22,7 @@ class FunctionWorker(QRunnable):
     def run(self) -> None:
         try:
             self.signals.result.emit(self.function())
-        except Exception as error:
+        except Exception as error:  # noqa: BLE001 - worker boundary forwards failures to the UI
             self.signals.error.emit(str(error))
         finally:
             self.signals.finished.emit()

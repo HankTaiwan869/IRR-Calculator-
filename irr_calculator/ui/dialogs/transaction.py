@@ -4,11 +4,18 @@ from datetime import date
 
 from PyQt6.QtCore import QDate
 from PyQt6.QtWidgets import (
-    QComboBox, QDateEdit, QDialog, QDialogButtonBox, QDoubleSpinBox,
-    QFormLayout, QMessageBox, QVBoxLayout,
+    QComboBox,
+    QDateEdit,
+    QDialog,
+    QDialogButtonBox,
+    QDoubleSpinBox,
+    QFormLayout,
+    QMessageBox,
+    QVBoxLayout,
 )
 from sqlalchemy import select
 
+from ...exceptions import ValidationError
 from ...models import Portfolio, Security, Transaction, TransactionKind
 from ...services.transactions import TransactionInput, validate
 
@@ -34,8 +41,12 @@ class TransactionDialog(QDialog):
         self.trade = self._number()
         self.income = self._number()
         with self.factory() as session:
-            portfolios = list(session.scalars(select(Portfolio).order_by(Portfolio.name)))
-            securities = list(session.scalars(select(Security).order_by(Security.symbol)))
+            portfolios = list(
+                session.scalars(select(Portfolio).order_by(Portfolio.name))
+            )
+            securities = list(
+                session.scalars(select(Security).order_by(Security.symbol))
+            )
         for item in portfolios:
             self.portfolio.addItem(item.name, item.id)
         self.security.addItem("None", None)
@@ -44,13 +55,21 @@ class TransactionDialog(QDialog):
         for kind in TransactionKind:
             self.kind.addItem(kind.value.replace("_", " ").title(), kind)
         for label, widget in (
-            ("Portfolio", self.portfolio), ("Security", self.security), ("Activity", self.kind),
-            ("Date", self.trade_date), ("Signed shares", self.shares), ("External cash", self.cash),
-            ("Trade amount", self.trade), ("Dividend income", self.income),
+            ("Portfolio", self.portfolio),
+            ("Security", self.security),
+            ("Activity", self.kind),
+            ("Date", self.trade_date),
+            ("Signed shares", self.shares),
+            ("External cash", self.cash),
+            ("Trade amount", self.trade),
+            ("Dividend income", self.income),
         ):
             form.addRow(label, widget)
         layout.addLayout(form)
-        buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Save | QDialogButtonBox.StandardButton.Cancel)
+        buttons = QDialogButtonBox(
+            QDialogButtonBox.StandardButton.Save
+            | QDialogButtonBox.StandardButton.Cancel
+        )
         buttons.accepted.connect(self.accept)
         buttons.rejected.connect(self.reject)
         layout.addWidget(buttons)
@@ -70,7 +89,9 @@ class TransactionDialog(QDialog):
         self.portfolio.setCurrentIndex(self.portfolio.findData(row.portfolio_id))
         self.security.setCurrentIndex(self.security.findData(row.security_id))
         self.kind.setCurrentIndex(self.kind.findData(TransactionKind(row.kind)))
-        self.trade_date.setDate(QDate(row.trade_date.year, row.trade_date.month, row.trade_date.day))
+        self.trade_date.setDate(
+            QDate(row.trade_date.year, row.trade_date.month, row.trade_date.day)
+        )
         self.shares.setValue(row.shares_delta)
         self.cash.setValue(row.external_cash_flow)
         self.trade.setValue(row.trade_amount)
@@ -79,14 +100,20 @@ class TransactionDialog(QDialog):
     def accept(self) -> None:
         qdate = self.trade_date.date()
         try:
-            self.result_data = validate(TransactionInput(
-                portfolio_id=self.portfolio.currentData(), security_id=self.security.currentData(),
-                kind=self.kind.currentData(), trade_date=date(qdate.year(), qdate.month(), qdate.day()),
-                shares_delta=int(self.shares.value()), external_cash_flow=int(self.cash.value()),
-                trade_amount=int(self.trade.value()), income_amount=int(self.income.value()),
-                source_key=self.transaction.source_key,
-            ))
-        except Exception as error:
+            self.result_data = validate(
+                TransactionInput(
+                    portfolio_id=self.portfolio.currentData(),
+                    security_id=self.security.currentData(),
+                    kind=self.kind.currentData(),
+                    trade_date=date(qdate.year(), qdate.month(), qdate.day()),
+                    shares_delta=int(self.shares.value()),
+                    external_cash_flow=int(self.cash.value()),
+                    trade_amount=int(self.trade.value()),
+                    income_amount=int(self.income.value()),
+                    source_key=self.transaction.source_key,
+                )
+            )
+        except ValidationError as error:
             QMessageBox.warning(self, "Transaction not valid", str(error))
             return
         super().accept()

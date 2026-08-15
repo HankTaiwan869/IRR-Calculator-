@@ -1,4 +1,4 @@
-from .base import DailyQuote, SecurityInfo, SecuritiesProvider
+from .base import DailyQuote, SecuritiesProvider, SecurityInfo
 from .finmind import FinMindProvider
 
-__all__ = ["DailyQuote", "SecurityInfo", "SecuritiesProvider", "FinMindProvider"]
+__all__ = ["DailyQuote", "FinMindProvider", "SecuritiesProvider", "SecurityInfo"]

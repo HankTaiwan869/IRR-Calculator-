@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 import os
 import sqlite3
-from decimal import Decimal, ROUND_HALF_UP
+from decimal import ROUND_HALF_UP, Decimal
 from pathlib import Path
 
 from sqlalchemy import Engine, create_engine, event, select
@@ -14,8 +14,12 @@ from .models import Base, Portfolio, SchemaMeta
 SCHEMA_VERSION = "3"
 
 _AUDIT_INTEGER_FIELDS = {
-    "shares_delta", "external_cash_flow", "trade_amount", "income_amount",
-    "unit_price", "fees",
+    "shares_delta",
+    "external_cash_flow",
+    "trade_amount",
+    "income_amount",
+    "unit_price",
+    "fees",
 }
 
 
@@ -57,11 +61,13 @@ def initialize_database(engine: Engine) -> None:
     if current_version == "2":
         _migrate_v2_to_v3(engine)
     elif current_version != SCHEMA_VERSION:
-        raise RuntimeError(f"Unsupported database schema {current_version}; expected {SCHEMA_VERSION}.")
+        raise RuntimeError(
+            f"Unsupported database schema {current_version}; expected {SCHEMA_VERSION}."
+        )
 
 
 def _round_integer(value: object) -> int:
-    return int(Decimal(str(value)).quantize(Decimal("1"), rounding=ROUND_HALF_UP))
+    return int(Decimal(str(value)).quantize(Decimal(1), rounding=ROUND_HALF_UP))
 
 
 def _integer_snapshot(value: str | None) -> str | None:
@@ -102,7 +108,9 @@ def _migrate_v1_to_v2(engine: Engine) -> None:
     try:
         connection.commit()
         connection.execute("PRAGMA foreign_keys=OFF")
-        connection.create_function("round_half_up", 1, _round_integer, deterministic=True)
+        connection.create_function(
+            "round_half_up", 1, _round_integer, deterministic=True
+        )
         connection.execute("BEGIN IMMEDIATE")
         connection.execute("""
             CREATE TABLE transactions_v2 (
@@ -171,9 +179,11 @@ def _migrate_v1_to_v2(engine: Engine) -> None:
                    round_half_up(close), fetched_at
             FROM quotes
         """)
-        audit_rows = list(connection.execute(
-            "SELECT id, transaction_id, action, before, after, created_at FROM transaction_audit"
-        ))
+        audit_rows = list(
+            connection.execute(
+                "SELECT id, transaction_id, action, before, after, created_at FROM transaction_audit"
+            )
+        )
 
         connection.execute("DROP TABLE transaction_audit")
         connection.execute("DROP TABLE quotes")
@@ -195,18 +205,33 @@ def _migrate_v1_to_v2(engine: Engine) -> None:
         for audit in audit_rows:
             connection.execute(
                 "INSERT INTO transaction_audit VALUES (?, ?, ?, ?, ?, ?)",
-                (audit[0], audit[1], audit[2], _integer_snapshot(audit[3]), _integer_snapshot(audit[4]), audit[5]),
+                (
+                    audit[0],
+                    audit[1],
+                    audit[2],
+                    _integer_snapshot(audit[3]),
+                    _integer_snapshot(audit[4]),
+                    audit[5],
+                ),
             )
-        connection.execute("CREATE INDEX ix_transactions_portfolio_date ON transactions (portfolio_id, trade_date, id)")
-        connection.execute("CREATE INDEX ix_transactions_security_date ON transactions (security_id, trade_date, id)")
-        connection.execute("CREATE INDEX ix_quotes_security_date ON quotes (security_id, market_date)")
+        connection.execute(
+            "CREATE INDEX ix_transactions_portfolio_date ON transactions (portfolio_id, trade_date, id)"
+        )
+        connection.execute(
+            "CREATE INDEX ix_transactions_security_date ON transactions (security_id, trade_date, id)"
+        )
+        connection.execute(
+            "CREATE INDEX ix_quotes_security_date ON quotes (security_id, market_date)"
+        )
         connection.execute(
             "UPDATE schema_meta SET value = ? WHERE key = 'schema_version'",
             ("2",),
         )
         violations = connection.execute("PRAGMA foreign_key_check").fetchall()
         if violations:
-            raise RuntimeError(f"Database migration failed foreign-key validation: {violations}")
+            raise RuntimeError(
+                f"Database migration failed foreign-key validation: {violations}"
+            )
         connection.commit()
     except Exception:
         connection.rollback()
@@ -264,9 +289,11 @@ def _migrate_v2_to_v3(engine: Engine) -> None:
                 income_amount, source_key, deleted_at, created_at, updated_at
             FROM transactions
         """)
-        audit_rows = list(connection.execute(
-            "SELECT id, transaction_id, action, before, after, created_at FROM transaction_audit"
-        ))
+        audit_rows = list(
+            connection.execute(
+                "SELECT id, transaction_id, action, before, after, created_at FROM transaction_audit"
+            )
+        )
         connection.execute("DROP TABLE transaction_audit")
         connection.execute("DROP TABLE transactions")
         connection.execute("ALTER TABLE transactions_v3 RENAME TO transactions")
@@ -285,17 +312,30 @@ def _migrate_v2_to_v3(engine: Engine) -> None:
         for audit in audit_rows:
             connection.execute(
                 "INSERT INTO transaction_audit VALUES (?, ?, ?, ?, ?, ?)",
-                (audit[0], audit[1], audit[2], _v3_snapshot(audit[3]), _v3_snapshot(audit[4]), audit[5]),
+                (
+                    audit[0],
+                    audit[1],
+                    audit[2],
+                    _v3_snapshot(audit[3]),
+                    _v3_snapshot(audit[4]),
+                    audit[5],
+                ),
             )
-        connection.execute("CREATE INDEX ix_transactions_portfolio_date ON transactions (portfolio_id, trade_date, id)")
-        connection.execute("CREATE INDEX ix_transactions_security_date ON transactions (security_id, trade_date, id)")
+        connection.execute(
+            "CREATE INDEX ix_transactions_portfolio_date ON transactions (portfolio_id, trade_date, id)"
+        )
+        connection.execute(
+            "CREATE INDEX ix_transactions_security_date ON transactions (security_id, trade_date, id)"
+        )
         connection.execute(
             "UPDATE schema_meta SET value = ? WHERE key = 'schema_version'",
             (SCHEMA_VERSION,),
         )
         violations = connection.execute("PRAGMA foreign_key_check").fetchall()
         if violations:
-            raise RuntimeError(f"Database migration failed foreign-key validation: {violations}")
+            raise RuntimeError(
+                f"Database migration failed foreign-key validation: {violations}"
+            )
         connection.commit()
     except Exception:
         connection.rollback()

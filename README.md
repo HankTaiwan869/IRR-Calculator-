@@ -61,5 +61,3 @@ The legacy importer accepts the original SQLite `log(id, stock_code, time, amoun
 Version 1 is local and single-user, supports Taiwan securities and TWD only, and refreshes delayed prices manually. It does not provide brokerage synchronization, real-time pricing, tax reporting, corporate-action automation, cloud sync, multi-currency accounting, or FIFO/LIFO basis.
 
 The interface is English-only. Chinese security names are retained solely as provider data.
-
-![Desktop dashboard](screenshot/desktop.png)

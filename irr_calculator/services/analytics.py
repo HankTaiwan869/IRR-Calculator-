@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import date
-from decimal import Decimal, ROUND_HALF_UP
+from decimal import ROUND_HALF_UP, Decimal
 
 from pyxirr import xirr
 from sqlalchemy import Select, select
@@ -39,17 +39,23 @@ class PortfolioSummary:
     positions: tuple[Position, ...]
 
 
-def _transactions_query(portfolio_id: int | None, valuation_date: date) -> Select[tuple[Transaction]]:
+def _transactions_query(
+    portfolio_id: int | None, valuation_date: date
+) -> Select[tuple[Transaction]]:
     query = select(Transaction).where(
         Transaction.deleted_at.is_(None),
         Transaction.trade_date <= valuation_date,
     )
     if portfolio_id is None:
-        return query.join(Portfolio, Transaction.portfolio_id == Portfolio.id).where(Portfolio.archived_at.is_(None))
+        return query.join(Portfolio, Transaction.portfolio_id == Portfolio.id).where(
+            Portfolio.archived_at.is_(None)
+        )
     return query.where(Transaction.portfolio_id == portfolio_id)
 
 
-def calculate_xirr(rows: list[Transaction], terminal_value: int, valuation_date: date) -> float | None:
+def calculate_xirr(
+    rows: list[Transaction], terminal_value: int, valuation_date: date
+) -> float | None:
     dated = [
         (row.trade_date, float(row.external_cash_flow))
         for row in rows
@@ -58,7 +64,11 @@ def calculate_xirr(rows: list[Transaction], terminal_value: int, valuation_date:
     if terminal_value != ZERO:
         dated.append((valuation_date, float(terminal_value)))
     values = [amount for _, amount in dated]
-    if not dated or not any(value < 0 for value in values) or not any(value > 0 for value in values):
+    if (
+        not dated
+        or not any(value < 0 for value in values)
+        or not any(value > 0 for value in values)
+    ):
         return None
     try:
         result = xirr([day for day, _ in dated], values)
@@ -67,8 +77,16 @@ def calculate_xirr(rows: list[Transaction], terminal_value: int, valuation_date:
         return None
 
 
-def portfolio_summary(session: Session, valuation_date: date, portfolio_id: int | None = None) -> PortfolioSummary:
-    rows = list(session.scalars(_transactions_query(portfolio_id, valuation_date).order_by(Transaction.trade_date, Transaction.id)))
+def portfolio_summary(
+    session: Session, valuation_date: date, portfolio_id: int | None = None
+) -> PortfolioSummary:
+    rows = list(
+        session.scalars(
+            _transactions_query(portfolio_id, valuation_date).order_by(
+                Transaction.trade_date, Transaction.id
+            )
+        )
+    )
     by_ledger: dict[tuple[int, int], list[Transaction]] = {}
     for row in rows:
         if row.security_id is not None:
@@ -86,44 +104,72 @@ def portfolio_summary(session: Session, valuation_date: date, portfolio_id: int 
         dividend_income = sum((ledger.dividend_income for ledger in ledgers), ZERO)
         security = session.get(Security, security_id)
         quote = session.scalar(
-            select(Quote).where(Quote.security_id == security_id, Quote.market_date <= valuation_date)
-            .order_by(Quote.market_date.desc()).limit(1)
+            select(Quote)
+            .where(
+                Quote.security_id == security_id, Quote.market_date <= valuation_date
+            )
+            .order_by(Quote.market_date.desc())
+            .limit(1)
         )
         market_value = None if quote is None else shares * quote.close
-        positions.append(Position(
-            security_id=security_id,
-            symbol=security.symbol if security else str(security_id),
-            shares=shares,
-            cost_basis=cost_basis,
-            market_value=market_value,
-            realized_profit=realized_profit,
-            dividend_income=dividend_income,
-            cost_basis_complete=all(ledger.cost_basis_complete for ledger in ledgers),
-        ))
+        positions.append(
+            Position(
+                security_id=security_id,
+                symbol=security.symbol if security else str(security_id),
+                shares=shares,
+                cost_basis=cost_basis,
+                market_value=market_value,
+                realized_profit=realized_profit,
+                dividend_income=dividend_income,
+                cost_basis_complete=all(
+                    ledger.cost_basis_complete for ledger in ledgers
+                ),
+            )
+        )
 
     priced_assets = sum((item.market_value or ZERO for item in positions), ZERO)
     cost_basis = sum((item.cost_basis for item in positions), ZERO)
     realized = sum((item.realized_profit for item in positions), ZERO)
     dividends = sum((item.dividend_income for item in positions), ZERO)
-    missing_open_value = any(item.shares != ZERO and item.market_value is None for item in positions)
+    missing_open_value = any(
+        item.shares != ZERO and item.market_value is None for item in positions
+    )
     total_assets = None if missing_open_value else priced_assets
     unrealized = None if total_assets is None else total_assets - cost_basis
     total_profit = None if unrealized is None else unrealized + realized + dividends
-    annual = None if total_assets is None else calculate_xirr(rows, total_assets, valuation_date)
+    annual = (
+        None
+        if total_assets is None
+        else calculate_xirr(rows, total_assets, valuation_date)
+    )
     monthly = None if annual is None or annual <= -1 else (1 + annual) ** (1 / 12) - 1
-    return PortfolioSummary(total_assets, cost_basis, realized, unrealized, dividends, total_profit, annual, monthly, tuple(positions))
+    return PortfolioSummary(
+        total_assets,
+        cost_basis,
+        realized,
+        unrealized,
+        dividends,
+        total_profit,
+        annual,
+        monthly,
+        tuple(positions),
+    )
 
 
-def projection(principal: int | None, years: int = 30, rates: tuple[float, ...] = (0.065, 0.09, 0.115)) -> tuple[tuple[int, ...], ...] | None:
+def projection(
+    principal: int | None,
+    years: int = 30,
+    rates: tuple[float, ...] = (0.065, 0.09, 0.115),
+) -> tuple[tuple[int, ...], ...] | None:
     if principal is None:
         return None
     decimal_principal = Decimal(principal)
     return tuple(
         tuple(
             int(
-                (decimal_principal * ((Decimal(1) + Decimal(str(rate))) ** year)).quantize(
-                    Decimal(1), rounding=ROUND_HALF_UP
-                )
+                (
+                    decimal_principal * ((Decimal(1) + Decimal(str(rate))) ** year)
+                ).quantize(Decimal(1), rounding=ROUND_HALF_UP)
             )
             for year in range(years + 1)
         )

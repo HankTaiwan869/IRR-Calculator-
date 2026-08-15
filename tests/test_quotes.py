@@ -31,10 +31,18 @@ class FractionalProvider(FakeProvider):
 def test_daily_cycle_cache_works_when_market_date_is_older_and_failure_keeps_quote(db):
     _engine, factory, (portfolio_id, security_id) = db
     with factory.begin() as session:
-        create_transaction(session, TransactionInput(
-            portfolio_id, security_id, TransactionKind.BUY, date(2025, 1, 1),
-            1, -90, 90,
-        ))
+        create_transaction(
+            session,
+            TransactionInput(
+                portfolio_id,
+                security_id,
+                TransactionKind.BUY,
+                date(2025, 1, 1),
+                1,
+                -90,
+                90,
+            ),
+        )
     provider = FakeProvider()
     cycle = date(2025, 1, 5)  # Sunday; latest market close is Friday.
     first = refresh_prices(factory, provider, cycle)
@@ -54,10 +62,18 @@ def test_daily_cycle_cache_works_when_market_date_is_older_and_failure_keeps_quo
 def test_refresh_normalizes_provider_close_to_half_up_integer(db):
     _engine, factory, (portfolio_id, security_id) = db
     with factory.begin() as session:
-        create_transaction(session, TransactionInput(
-            portfolio_id, security_id, TransactionKind.BUY, date(2025, 1, 1),
-            1, -90, 90,
-        ))
+        create_transaction(
+            session,
+            TransactionInput(
+                portfolio_id,
+                security_id,
+                TransactionKind.BUY,
+                date(2025, 1, 1),
+                1,
+                -90,
+                90,
+            ),
+        )
 
     result = refresh_prices(factory, FractionalProvider(), date(2025, 1, 5))
 
@@ -72,17 +88,39 @@ def test_all_portfolios_refresh_excludes_archived_but_explicit_refresh_includes_
     _engine, factory, (active_portfolio_id, active_security_id) = db
     with factory.begin() as session:
         archived = Portfolio(name="Archived", archived_at=date(2025, 1, 1))
-        archived_security = Security(provider="FinMind", symbol="0050", name_zh="ETF", exchange="twse", security_type="etf")
+        archived_security = Security(
+            provider="FinMind",
+            symbol="0050",
+            name_zh="ETF",
+            exchange="twse",
+            security_type="etf",
+        )
         session.add_all((archived, archived_security))
         session.flush()
-        create_transaction(session, TransactionInput(
-            active_portfolio_id, active_security_id, TransactionKind.BUY, date(2025, 1, 1),
-            1, -90, 90,
-        ))
-        create_transaction(session, TransactionInput(
-            archived.id, archived_security.id, TransactionKind.BUY, date(2025, 1, 1),
-            1, -50, 50,
-        ))
+        create_transaction(
+            session,
+            TransactionInput(
+                active_portfolio_id,
+                active_security_id,
+                TransactionKind.BUY,
+                date(2025, 1, 1),
+                1,
+                -90,
+                90,
+            ),
+        )
+        create_transaction(
+            session,
+            TransactionInput(
+                archived.id,
+                archived_security.id,
+                TransactionKind.BUY,
+                date(2025, 1, 1),
+                1,
+                -50,
+                50,
+            ),
+        )
 
     provider = FakeProvider()
     combined = refresh_prices(factory, provider, date(2025, 1, 5))

@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import date
+from datetime import date, datetime
 
 from PyQt6.QtCore import QSortFilterProxyModel, Qt
 from PyQt6.QtTest import QSignalSpy
@@ -9,7 +9,13 @@ from sqlalchemy import func, select
 
 from irr_calculator import __version__
 from irr_calculator.exceptions import ValidationError
-from irr_calculator.models import Portfolio, Quote, Transaction, TransactionAudit, TransactionKind
+from irr_calculator.models import (
+    Portfolio,
+    Quote,
+    Transaction,
+    TransactionAudit,
+    TransactionKind,
+)
 from irr_calculator.services.transactions import TransactionInput
 from irr_calculator.ui.main_window import MainWindow
 from irr_calculator.ui.models import TransactionTableModel
@@ -48,12 +54,18 @@ def test_portfolio_changes_refresh_dependent_selectors(qtbot, db, monkeypatch):
         _AcceptedPortfolioDialog,
     )
     monkeypatch.setattr(
-        QMessageBox, "question", lambda *_args: QMessageBox.StandardButton.Yes,
+        QMessageBox,
+        "question",
+        lambda *_args: QMessageBox.StandardButton.Yes,
     )
 
     window.portfolios.create()
 
-    assert _combo_items(window.dashboard.portfolio) == ["All portfolios", "Core", "Growth"]
+    assert _combo_items(window.dashboard.portfolio) == [
+        "All portfolios",
+        "Core",
+        "Growth",
+    ]
     assert _combo_items(window.transactions.portfolio) == ["Core", "Growth"]
 
     _select_portfolio(window.portfolios, "Growth")
@@ -87,14 +99,16 @@ def test_settings_label_and_version(qtbot, db):
     assert window.settings.version_value.text() == __version__
 
 
-def test_nonempty_portfolio_delete_removes_transactions_and_audits(qtbot, db, monkeypatch):
+def test_nonempty_portfolio_delete_removes_transactions_and_audits(
+    qtbot, db, monkeypatch
+):
     _engine, factory, (portfolio_id, security_id) = db
     with factory.begin() as session:
         transaction = Transaction(
             portfolio_id=portfolio_id,
             security_id=security_id,
             kind=TransactionKind.BUY.value,
-            trade_date=date.today(),
+            trade_date=datetime.now().astimezone().date(),
             shares_delta=1,
             external_cash_flow=-100,
             trade_amount=100,
@@ -102,17 +116,21 @@ def test_nonempty_portfolio_delete_removes_transactions_and_audits(qtbot, db, mo
         )
         session.add(transaction)
         session.flush()
-        session.add(TransactionAudit(
-            transaction_id=transaction.id,
-            action="EDIT",
-            before={"trade_amount": 90},
-            after={"trade_amount": 100},
-        ))
+        session.add(
+            TransactionAudit(
+                transaction_id=transaction.id,
+                action="EDIT",
+                before={"trade_amount": 90},
+                after={"trade_amount": 100},
+            )
+        )
 
     window = MainWindow(factory)
     qtbot.addWidget(window)
     monkeypatch.setattr(
-        QMessageBox, "question", lambda *_args: QMessageBox.StandardButton.Yes,
+        QMessageBox,
+        "question",
+        lambda *_args: QMessageBox.StandardButton.Yes,
     )
     changes = QSignalSpy(window.portfolios.data_changed)
     _select_portfolio(window.portfolios, "Core")
@@ -146,7 +164,7 @@ def test_failed_portfolio_create_does_not_emit_change(qtbot, db, monkeypatch):
 
 def test_history_delete_and_restore_refresh_dashboard(qtbot, db, monkeypatch):
     _engine, factory, (portfolio_id, security_id) = db
-    today = date.today()
+    today = datetime.now().astimezone().date()
     with factory.begin() as session:
         session.add_all(
             (
@@ -270,10 +288,22 @@ def test_history_proxy_sorts_native_dates_and_numbers_and_keeps_ids(qtbot):
     proxy.setSortRole(TransactionTableModel.SORT_ROLE)
 
     proxy.sort(0, Qt.SortOrder.AscendingOrder)
-    assert [proxy.index(row, 0).data(Qt.ItemDataRole.UserRole) for row in range(3)] == [20, 30, 10]
+    assert [proxy.index(row, 0).data(Qt.ItemDataRole.UserRole) for row in range(3)] == [
+        20,
+        30,
+        10,
+    ]
 
     proxy.sort(4, Qt.SortOrder.AscendingOrder)
-    assert [proxy.index(row, 4).data(Qt.ItemDataRole.UserRole) for row in range(3)] == [20, 10, 30]
+    assert [proxy.index(row, 4).data(Qt.ItemDataRole.UserRole) for row in range(3)] == [
+        20,
+        10,
+        30,
+    ]
 
     proxy.sort(6, Qt.SortOrder.AscendingOrder)
-    assert [proxy.index(row, 6).data(Qt.ItemDataRole.UserRole) for row in range(3)] == [30, 20, 10]
+    assert [proxy.index(row, 6).data(Qt.ItemDataRole.UserRole) for row in range(3)] == [
+        30,
+        20,
+        10,
+    ]

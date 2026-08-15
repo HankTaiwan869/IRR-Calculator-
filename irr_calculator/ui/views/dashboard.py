@@ -1,11 +1,18 @@
 from __future__ import annotations
 
-from datetime import date
+from datetime import datetime
 
 from PyQt6.QtCore import Qt, pyqtSignal
 from PyQt6.QtWidgets import (
-    QComboBox, QFrame, QGridLayout, QHBoxLayout, QLabel, QPushButton, QScrollArea,
-    QVBoxLayout, QWidget,
+    QComboBox,
+    QFrame,
+    QGridLayout,
+    QHBoxLayout,
+    QLabel,
+    QPushButton,
+    QScrollArea,
+    QVBoxLayout,
+    QWidget,
 )
 from sqlalchemy import select
 
@@ -49,10 +56,14 @@ class DashboardView(QScrollArea):
         self.portfolio.currentIndexChanged.connect(self.reload)
         refresh = QPushButton("Refresh Prices")
         refresh.setObjectName("primary")
-        refresh.clicked.connect(lambda: self.refresh_requested.emit(self.portfolio.currentData(), False))
+        refresh.clicked.connect(
+            lambda: self.refresh_requested.emit(self.portfolio.currentData(), False)
+        )
         retry = QPushButton("Retry Prices")
         retry.setToolTip("Explicitly bypass the current daily refresh cache")
-        retry.clicked.connect(lambda: self.refresh_requested.emit(self.portfolio.currentData(), True))
+        retry.clicked.connect(
+            lambda: self.refresh_requested.emit(self.portfolio.currentData(), True)
+        )
         bar.addWidget(QLabel("Portfolio"))
         bar.addWidget(self.portfolio, 1)
         bar.addStretch()
@@ -61,7 +72,14 @@ class DashboardView(QScrollArea):
         layout.addLayout(bar)
 
         grid = QGridLayout()
-        names = ("Total assets", "Total profit", "Realized profit", "Unrealized profit", "Dividend income", "Annual / monthly IRR")
+        names = (
+            "Total assets",
+            "Total profit",
+            "Realized profit",
+            "Unrealized profit",
+            "Dividend income",
+            "Annual / monthly IRR",
+        )
         self.cards = {name: MetricCard(name) for name in names}
         for index, card in enumerate(self.cards.values()):
             grid.addWidget(card, index // 2, index % 2)
@@ -73,7 +91,13 @@ class DashboardView(QScrollArea):
     def reload_portfolios(self) -> None:
         selected = self.portfolio.currentData()
         with self.factory() as session:
-            portfolios = list(session.scalars(select(Portfolio).where(Portfolio.archived_at.is_(None)).order_by(Portfolio.name)))
+            portfolios = list(
+                session.scalars(
+                    select(Portfolio)
+                    .where(Portfolio.archived_at.is_(None))
+                    .order_by(Portfolio.name)
+                )
+            )
         self.portfolio.blockSignals(True)
         self.portfolio.clear()
         self.portfolio.addItem("All portfolios", None)
@@ -88,11 +112,19 @@ class DashboardView(QScrollArea):
         if self.portfolio.count() == 0:
             return
         with self.factory() as session:
-            summary = portfolio_summary(session, date.today(), self.portfolio.currentData())
+            summary = portfolio_summary(
+                session,
+                datetime.now().astimezone().date(),
+                self.portfolio.currentData(),
+            )
         self.cards["Total assets"].value.setText(money(summary.total_assets))
         self.cards["Total profit"].value.setText(money(summary.total_profit))
         self.cards["Realized profit"].value.setText(money(summary.realized_profit))
         self.cards["Unrealized profit"].value.setText(money(summary.unrealized_profit))
         self.cards["Dividend income"].value.setText(money(summary.dividend_income))
-        irr = "Not calculable" if summary.annual_irr is None else f"{summary.annual_irr:.2%} / {summary.monthly_irr:.2%}"
+        irr = (
+            "Not calculable"
+            if summary.annual_irr is None
+            else f"{summary.annual_irr:.2%} / {summary.monthly_irr:.2%}"
+        )
         self.cards["Annual / monthly IRR"].value.setText(irr)
