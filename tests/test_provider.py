@@ -1,5 +1,4 @@
 from datetime import date
-from decimal import Decimal
 
 import httpx
 import pytest
@@ -13,7 +12,7 @@ def test_finmind_parses_latest_positive_quote():
         return httpx.Response(200, json={"status": 200, "data": [{"date": "2025-01-02", "close": 10}, {"date": "2025-01-03", "close": 11.5}]})
     provider = FinMindProvider("secret", transport=httpx.MockTransport(handler))
     quote = provider.latest_quote("2330", date(2025, 1, 1))
-    assert quote.close == Decimal("11.5") and quote.market_date == date(2025, 1, 3)
+    assert quote.close == 12 and quote.market_date == date(2025, 1, 3)
 
 
 def test_provider_redacts_token_and_normalizes_rate_limit():

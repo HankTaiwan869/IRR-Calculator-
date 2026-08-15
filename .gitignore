@@ -17,6 +17,4 @@ __pycache__/
 .idea/
 
 investment.db
-investment.ico
 load_csv_to_db.py
-run.bat

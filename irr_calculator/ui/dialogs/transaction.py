@@ -1,12 +1,11 @@
 from __future__ import annotations
 
 from datetime import date
-from decimal import Decimal
 
 from PyQt6.QtCore import QDate
 from PyQt6.QtWidgets import (
     QComboBox, QDateEdit, QDialog, QDialogButtonBox, QDoubleSpinBox,
-    QFormLayout, QLineEdit, QMessageBox, QVBoxLayout,
+    QFormLayout, QMessageBox, QVBoxLayout,
 )
 from sqlalchemy import select
 
@@ -29,13 +28,11 @@ class TransactionDialog(QDialog):
         self.kind = QComboBox()
         self.trade_date = QDateEdit()
         self.trade_date.setCalendarPopup(True)
-        self.shares = self._number(8, signed=True)
-        self.cash = self._number(2, signed=True)
-        self.trade = self._number(2)
-        self.income = self._number(2)
-        self.price = self._number(4)
-        self.fees = self._number(2)
-        self.notes = QLineEdit()
+        self.trade_date.setMaximumDate(QDate.currentDate())
+        self.shares = self._number(signed=True)
+        self.cash = self._number(signed=True)
+        self.trade = self._number()
+        self.income = self._number()
         with self.factory() as session:
             portfolios = list(session.scalars(select(Portfolio).order_by(Portfolio.name)))
             securities = list(session.scalars(select(Security).order_by(Security.symbol)))
@@ -50,7 +47,6 @@ class TransactionDialog(QDialog):
             ("Portfolio", self.portfolio), ("Security", self.security), ("Activity", self.kind),
             ("Date", self.trade_date), ("Signed shares", self.shares), ("External cash", self.cash),
             ("Trade amount", self.trade), ("Dividend income", self.income),
-            ("Unit price", self.price), ("Fees", self.fees), ("Notes", self.notes),
         ):
             form.addRow(label, widget)
         layout.addLayout(form)
@@ -61,9 +57,9 @@ class TransactionDialog(QDialog):
         self._populate()
 
     @staticmethod
-    def _number(decimals: int, signed: bool = False) -> QDoubleSpinBox:
+    def _number(signed: bool = False) -> QDoubleSpinBox:
         widget = QDoubleSpinBox()
-        widget.setDecimals(decimals)
+        widget.setDecimals(0)
         widget.setMaximum(999_999_999_999)
         if signed:
             widget.setMinimum(-999_999_999_999)
@@ -75,13 +71,10 @@ class TransactionDialog(QDialog):
         self.security.setCurrentIndex(self.security.findData(row.security_id))
         self.kind.setCurrentIndex(self.kind.findData(TransactionKind(row.kind)))
         self.trade_date.setDate(QDate(row.trade_date.year, row.trade_date.month, row.trade_date.day))
-        self.shares.setValue(float(row.shares_delta))
-        self.cash.setValue(float(row.external_cash_flow))
-        self.trade.setValue(float(row.trade_amount))
-        self.income.setValue(float(row.income_amount))
-        self.price.setValue(float(row.unit_price or 0))
-        self.fees.setValue(float(row.fees))
-        self.notes.setText(row.notes)
+        self.shares.setValue(row.shares_delta)
+        self.cash.setValue(row.external_cash_flow)
+        self.trade.setValue(row.trade_amount)
+        self.income.setValue(row.income_amount)
 
     def accept(self) -> None:
         qdate = self.trade_date.date()
@@ -89,10 +82,9 @@ class TransactionDialog(QDialog):
             self.result_data = validate(TransactionInput(
                 portfolio_id=self.portfolio.currentData(), security_id=self.security.currentData(),
                 kind=self.kind.currentData(), trade_date=date(qdate.year(), qdate.month(), qdate.day()),
-                shares_delta=Decimal(str(self.shares.value())), external_cash_flow=Decimal(str(self.cash.value())),
-                trade_amount=Decimal(str(self.trade.value())), income_amount=Decimal(str(self.income.value())),
-                unit_price=Decimal(str(self.price.value())) if self.price.value() else None,
-                fees=Decimal(str(self.fees.value())), notes=self.notes.text(), source_key=self.transaction.source_key,
+                shares_delta=int(self.shares.value()), external_cash_flow=int(self.cash.value()),
+                trade_amount=int(self.trade.value()), income_amount=int(self.income.value()),
+                source_key=self.transaction.source_key,
             ))
         except Exception as error:
             QMessageBox.warning(self, "Transaction not valid", str(error))

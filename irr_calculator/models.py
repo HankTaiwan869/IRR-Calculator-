@@ -1,15 +1,11 @@
 from __future__ import annotations
 
 from datetime import date, datetime
-from decimal import Decimal
 from enum import StrEnum
 from typing import Any
 
-from sqlalchemy import CheckConstraint, Date, DateTime, ForeignKey, Index, Integer, JSON, Numeric, String, Text, UniqueConstraint, func
+from sqlalchemy import CheckConstraint, Date, DateTime, ForeignKey, Index, Integer, JSON, String, Text, UniqueConstraint, func
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
-
-MONEY = Numeric(24, 6)
-SHARES = Numeric(24, 8)
 
 
 class Base(DeclarativeBase):
@@ -53,8 +49,6 @@ class Transaction(Base):
     __table_args__ = (
         CheckConstraint("trade_amount >= 0", name="ck_transaction_trade_nonnegative"),
         CheckConstraint("income_amount >= 0", name="ck_transaction_income_nonnegative"),
-        CheckConstraint("fees >= 0", name="ck_transaction_fees_nonnegative"),
-        CheckConstraint("unit_price IS NULL OR unit_price >= 0", name="ck_transaction_price_nonnegative"),
         Index("ix_transactions_portfolio_date", "portfolio_id", "trade_date", "id"),
         Index("ix_transactions_security_date", "security_id", "trade_date", "id"),
     )
@@ -63,13 +57,10 @@ class Transaction(Base):
     security_id: Mapped[int | None] = mapped_column(ForeignKey("securities.id"))
     kind: Mapped[str] = mapped_column(String(32), nullable=False)
     trade_date: Mapped[date] = mapped_column(Date, nullable=False)
-    shares_delta: Mapped[Decimal] = mapped_column(SHARES, default=Decimal("0"), nullable=False)
-    external_cash_flow: Mapped[Decimal] = mapped_column(MONEY, default=Decimal("0"), nullable=False)
-    trade_amount: Mapped[Decimal] = mapped_column(MONEY, default=Decimal("0"), nullable=False)
-    income_amount: Mapped[Decimal] = mapped_column(MONEY, default=Decimal("0"), nullable=False)
-    unit_price: Mapped[Decimal | None] = mapped_column(MONEY)
-    fees: Mapped[Decimal] = mapped_column(MONEY, default=Decimal("0"), nullable=False)
-    notes: Mapped[str] = mapped_column(Text, default="", nullable=False)
+    shares_delta: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    external_cash_flow: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    trade_amount: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    income_amount: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     source_key: Mapped[str | None] = mapped_column(String(200), unique=True)
     deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
@@ -90,7 +81,7 @@ class Quote(Base):
     provider: Mapped[str] = mapped_column(String(40), default="FinMind", nullable=False)
     market_date: Mapped[date] = mapped_column(Date, nullable=False)
     refresh_cycle_date: Mapped[date] = mapped_column(Date, nullable=False)
-    close: Mapped[Decimal] = mapped_column(MONEY, nullable=False)
+    close: Mapped[int] = mapped_column(Integer, nullable=False)
     fetched_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     security: Mapped[Security] = relationship()
 

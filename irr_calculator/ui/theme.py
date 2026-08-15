@@ -3,6 +3,7 @@ COLORS = {
     "surface": "#ffffff",
     "sidebar": "#172033",
     "sidebar_hover": "#26324a",
+    "sidebar_text": "#f8fafc",
     "primary": "#356ae6",
     "primary_hover": "#2858c8",
     "text": "#172033",
@@ -19,9 +20,6 @@ def stylesheet() -> str:
     QMainWindow, QWidget#appRoot, QScrollArea {{ background: {c['background']}; }}
     QWidget#sidebar {{ background: {c['sidebar']}; }}
     QLabel#brand {{ color: white; font-size: 18pt; font-weight: 700; padding: 18px 12px; }}
-    QPushButton#navButton {{ color: #dce4f2; text-align: left; border: 0; border-radius: 7px; padding: 10px 14px; min-height: 28px; }}
-    QPushButton#navButton:hover {{ background: {c['sidebar_hover']}; }}
-    QPushButton#navButton:checked {{ background: {c['primary']}; color: white; font-weight: 600; }}
     QLabel#pageTitle {{ font-size: 23pt; font-weight: 700; }}
     QLabel#sectionTitle {{ font-size: 17pt; font-weight: 650; }}
     QFrame#panel, QFrame#metricCard {{ background: {c['surface']}; border: 1px solid {c['border']}; border-radius: 10px; }}
@@ -32,6 +30,9 @@ def stylesheet() -> str:
     QPushButton#primary {{ background: {c['primary']}; color: white; border-color: {c['primary']}; font-weight: 600; }}
     QPushButton#primary:hover {{ background: {c['primary_hover']}; }}
     QPushButton#danger {{ color: {c['danger']}; border-color: {c['danger']}; }}
+    QWidget#sidebar QPushButton#navButton {{ background-color: {c['sidebar']}; color: {c['sidebar_text']}; text-align: left; border: 0; border-radius: 7px; padding: 10px 14px; min-height: 28px; }}
+    QWidget#sidebar QPushButton#navButton:hover {{ background-color: {c['sidebar_hover']}; color: white; }}
+    QWidget#sidebar QPushButton#navButton:checked {{ background-color: {c['primary']}; color: white; font-weight: 600; }}
     QLineEdit, QComboBox, QDateEdit, QDoubleSpinBox, QSpinBox {{ min-height: 34px; padding: 2px 8px; background: white; border: 1px solid {c['border']}; border-radius: 6px; }}
     QLineEdit:focus, QComboBox:focus, QDateEdit:focus, QDoubleSpinBox:focus {{ border: 2px solid {c['primary']}; }}
     QTableView {{ background: white; alternate-background-color: #f8fafc; border: 1px solid {c['border']}; border-radius: 7px; gridline-color: #edf0f5; }}

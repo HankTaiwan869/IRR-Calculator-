@@ -5,7 +5,7 @@ import shutil
 import sqlite3
 from dataclasses import dataclass
 from datetime import date, datetime
-from decimal import Decimal
+from decimal import Decimal, ROUND_HALF_UP
 from pathlib import Path
 
 from sqlalchemy import select
@@ -29,6 +29,10 @@ def _fingerprint(path: Path) -> str:
         while chunk := stream.read(1024 * 1024):
             digest.update(chunk)
     return digest.hexdigest()
+
+
+def _round_integer(value: object) -> int:
+    return int(Decimal(str(value)).quantize(Decimal("1"), rounding=ROUND_HALF_UP))
 
 
 def import_legacy_database(session: Session, source: Path | str, backup_dir: Path | None = None) -> ImportResult:
@@ -62,16 +66,15 @@ def import_legacy_database(session: Session, source: Path | str, backup_dir: Pat
         create_transaction(session, TransactionInput(
             portfolio_id=portfolio.id, security_id=security.id,
             kind=TransactionKind.LEGACY_CASH_FLOW, trade_date=date.fromisoformat(str(when)[:10]),
-            external_cash_flow=Decimal(str(amount)), source_key=f"legacy:{fingerprint}:{row_id}",
-            notes=f"Imported from {path.name}",
+            external_cash_flow=_round_integer(amount), source_key=f"legacy:{fingerprint}:{row_id}",
         ))
     session.add(ImportRun(fingerprint=fingerprint, source_path=str(path), imported_rows=len(rows)))
     return ImportResult(len(rows), False, backup)
 
 
-def reconcile_opening_position(session: Session, portfolio_id: int, security_id: int, as_of: date, shares: Decimal, total_cost: Decimal | None = None, notes: str = ""):
+def reconcile_opening_position(session: Session, portfolio_id: int, security_id: int, as_of: date, shares: int, total_cost: int | None = None):
     return create_transaction(session, TransactionInput(
         portfolio_id=portfolio_id, security_id=security_id,
         kind=TransactionKind.OPENING_POSITION, trade_date=as_of,
-        shares_delta=shares, trade_amount=total_cost or Decimal("0"), notes=notes,
+        shares_delta=shares, trade_amount=total_cost or 0,
     ))

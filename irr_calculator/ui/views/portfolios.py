@@ -2,16 +2,18 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 
-from PyQt6.QtCore import Qt
+from PyQt6.QtCore import Qt, pyqtSignal
 from PyQt6.QtWidgets import QHBoxLayout, QMessageBox, QPushButton, QTableWidget, QTableWidgetItem, QVBoxLayout, QWidget
-from sqlalchemy import func, select
+from sqlalchemy import delete, func, select
 from sqlalchemy.exc import IntegrityError
 
-from ...models import Portfolio, Transaction
+from ...models import Portfolio, Transaction, TransactionAudit
 from ..dialogs import PortfolioDialog
 
 
 class PortfoliosView(QWidget):
+    data_changed = pyqtSignal()
+
     def __init__(self, session_factory, parent=None) -> None:
         super().__init__(parent)
         self.factory = session_factory
@@ -23,7 +25,7 @@ class PortfoliosView(QWidget):
         new_button.setObjectName("primary")
         edit_button = QPushButton("Rename")
         archive_button = QPushButton("Archive / Restore")
-        delete_button = QPushButton("Delete Empty")
+        delete_button = QPushButton("Delete")
         delete_button.setObjectName("danger")
         for button in (new_button, edit_button, archive_button, delete_button):
             actions.addWidget(button)
@@ -37,7 +39,7 @@ class PortfoliosView(QWidget):
         new_button.clicked.connect(self.create)
         edit_button.clicked.connect(self.rename)
         archive_button.clicked.connect(self.archive_restore)
-        delete_button.clicked.connect(self.delete_empty)
+        delete_button.clicked.connect(self.delete_selected)
         self.reload()
 
     def reload(self) -> None:
@@ -67,7 +69,8 @@ class PortfoliosView(QWidget):
                 session.add(Portfolio(name=dialog.portfolio_name))
         except IntegrityError:
             QMessageBox.warning(self, "Portfolio", "Portfolio names must be unique.")
-        self.reload()
+            return
+        self.data_changed.emit()
 
     def rename(self) -> None:
         portfolio_id = self._selected()
@@ -82,7 +85,8 @@ class PortfoliosView(QWidget):
                     session.get(Portfolio, portfolio_id).name = dialog.portfolio_name
             except IntegrityError:
                 QMessageBox.warning(self, "Portfolio", "Portfolio names must be unique.")
-            self.reload()
+                return
+            self.data_changed.emit()
 
     def archive_restore(self) -> None:
         portfolio_id = self._selected()
@@ -91,16 +95,33 @@ class PortfoliosView(QWidget):
         with self.factory.begin() as session:
             portfolio = session.get(Portfolio, portfolio_id)
             portfolio.archived_at = None if portfolio.archived_at else datetime.now(timezone.utc)
-        self.reload()
+        self.data_changed.emit()
 
-    def delete_empty(self) -> None:
+    def delete_selected(self) -> None:
         portfolio_id = self._selected()
         if portfolio_id is None:
             return
-        with self.factory.begin() as session:
+        with self.factory() as session:
+            portfolio = session.get(Portfolio, portfolio_id)
             count = session.scalar(select(func.count()).select_from(Transaction).where(Transaction.portfolio_id == portfolio_id))
-            if count:
-                QMessageBox.warning(self, "Portfolio", "Only empty portfolios can be permanently deleted. Archive this portfolio instead.")
-                return
-            session.delete(session.get(Portfolio, portfolio_id))
-        self.reload()
+            name = portfolio.name
+        noun = "transaction" if count == 1 else "transactions"
+        answer = QMessageBox.question(
+            self,
+            "Delete portfolio",
+            f'Permanently delete "{name}" and its {count} {noun}?\n\nThis also deletes its transaction history and cannot be undone.',
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No,
+        )
+        if answer != QMessageBox.StandardButton.Yes:
+            return
+        with self.factory.begin() as session:
+            transaction_ids = select(Transaction.id).where(Transaction.portfolio_id == portfolio_id)
+            session.execute(
+                delete(TransactionAudit).where(TransactionAudit.transaction_id.in_(transaction_ids))
+            )
+            session.execute(delete(Transaction).where(Transaction.portfolio_id == portfolio_id))
+            portfolio = session.get(Portfolio, portfolio_id)
+            if portfolio is not None:
+                session.delete(portfolio)
+        self.data_changed.emit()

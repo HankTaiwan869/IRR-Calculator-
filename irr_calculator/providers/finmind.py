@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from datetime import date
-from decimal import Decimal, InvalidOperation
+from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
 from typing import Any
 
 import httpx
@@ -76,7 +76,8 @@ class FinMindProvider:
             raise ProviderError(f"No daily price is available for {symbol}.")
         for item in reversed(records):
             try:
-                close = Decimal(str(item["close"]))
+                raw_close = Decimal(str(item["close"]))
+                close = int(raw_close.quantize(Decimal("1"), rounding=ROUND_HALF_UP))
                 market_date = date.fromisoformat(str(item["date"])[:10])
             except (KeyError, ValueError, InvalidOperation, TypeError) as error:
                 raise ProviderError(f"FinMind returned a malformed quote for {symbol}.") from error

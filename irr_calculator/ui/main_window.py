@@ -12,12 +12,15 @@ from PyQt6.QtWidgets import (
 from ..preferences import get_finmind_token
 from ..providers import FinMindProvider
 from ..services.quotes import refresh_prices
-from .views import DashboardView, HistoryView, PortfoliosView, SettingsImportView, TransactionsView
+from .views import (
+    DashboardView, HistoryView, PortfoliosView, ProjectionView, SettingsImportView,
+    TransactionsView,
+)
 from .workers import FunctionWorker
 
 
 class MainWindow(QMainWindow):
-    PAGE_NAMES = ("Dashboard", "Transactions", "History", "Portfolios", "Settings & Import")
+    PAGE_NAMES = ("Dashboard", "Projection", "Transactions", "History", "Portfolios", "Settings")
 
     def __init__(self, session_factory, parent=None) -> None:
         super().__init__(parent)
@@ -66,17 +69,20 @@ class MainWindow(QMainWindow):
         main_layout.addLayout(header)
         self.stack = QStackedWidget()
         self.dashboard = DashboardView(self.factory)
+        self.projection = ProjectionView(self.factory)
         self.transactions = TransactionsView(self.factory)
         self.history = HistoryView(self.factory)
         self.portfolios = PortfoliosView(self.factory)
         self.settings = SettingsImportView(self.factory)
-        for page in (self.dashboard, self.transactions, self.history, self.portfolios, self.settings):
+        for page in (self.dashboard, self.projection, self.transactions, self.history, self.portfolios, self.settings):
             self.stack.addWidget(page)
         main_layout.addWidget(self.stack, 1)
         outer.addWidget(main, 1)
 
         self.dashboard.refresh_requested.connect(self.refresh_prices)
         self.transactions.saved.connect(self._reload_data)
+        self.history.data_changed.connect(self._reload_data)
+        self.portfolios.data_changed.connect(self._reload_data)
         self.settings.data_changed.connect(self._reload_data)
         self.statusBar().showMessage("Ready")
         self._create_actions()
@@ -89,7 +95,7 @@ class MainWindow(QMainWindow):
         self.addAction(refresh)
         new_transaction = QAction("New Transaction", self)
         new_transaction.setShortcut(QKeySequence("Ctrl+N"))
-        new_transaction.triggered.connect(lambda: self.show_page(1))
+        new_transaction.triggered.connect(lambda: self.show_page(self.PAGE_NAMES.index("Transactions")))
         self.addAction(new_transaction)
         focus_search = QAction("Focus History Filter", self)
         focus_search.setShortcut(QKeySequence("Ctrl+F"))
@@ -101,11 +107,11 @@ class MainWindow(QMainWindow):
         self.addAction(edit)
 
     def _focus_history(self) -> None:
-        self.show_page(2)
+        self.show_page(self.PAGE_NAMES.index("History"))
         self.history.search.setFocus()
 
     def _edit_history(self) -> None:
-        self.show_page(2)
+        self.show_page(self.PAGE_NAMES.index("History"))
         self.history.edit_selected()
 
     def show_page(self, index: int) -> None:
@@ -113,20 +119,22 @@ class MainWindow(QMainWindow):
         self.title.setText(self.PAGE_NAMES[index])
         for button_index, button in enumerate(self.nav_buttons):
             button.setChecked(button_index == index)
-        if index == 0 and self.isVisible():
-            QTimer.singleShot(0, self.dashboard.ensure_chart)
-        elif index == 2:
+        page_name = self.PAGE_NAMES[index]
+        if page_name == "Projection" and self.isVisible():
+            QTimer.singleShot(0, self.projection.ensure_chart)
+        elif page_name == "History":
             self.history.reload()
-        elif index == 3:
+        elif page_name == "Portfolios":
             self.portfolios.reload()
 
     def showEvent(self, event) -> None:  # type: ignore[no-untyped-def]
         super().showEvent(event)
-        if self.stack.currentIndex() == 0 and self.dashboard.chart is None:
-            QTimer.singleShot(0, self.dashboard.ensure_chart)
+        if self.PAGE_NAMES[self.stack.currentIndex()] == "Projection" and self.projection.chart is None:
+            QTimer.singleShot(0, self.projection.ensure_chart)
 
     def _reload_data(self) -> None:
         self.dashboard.reload_portfolios()
+        self.projection.reload_portfolios()
         self.transactions.reload_context()
         self.history.reload()
         self.portfolios.reload()
@@ -138,7 +146,7 @@ class MainWindow(QMainWindow):
             QMessageBox.warning(self, "Refresh Prices", f"The FinMind token could not be read: {error}")
             return
         if not token:
-            QMessageBox.information(self, "Refresh Prices", "Save a FinMind token under Settings & Import first.")
+            QMessageBox.information(self, "Refresh Prices", "Save a FinMind token under Settings first.")
             return
         self.statusBar().showMessage("Refreshing daily prices…")
         worker = FunctionWorker(lambda: refresh_prices(self.factory, FinMindProvider(token), date.today(), portfolio_id, retry))
@@ -149,6 +157,7 @@ class MainWindow(QMainWindow):
 
     def _refresh_complete(self, result: object) -> None:
         self.dashboard.reload()
+        self.projection.reload()
         failures = getattr(result, "failed", ())
         refreshed = len(getattr(result, "refreshed", ()))
         cached = len(getattr(result, "cached", ()))

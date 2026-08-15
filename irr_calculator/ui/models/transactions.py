@@ -1,12 +1,14 @@
 from __future__ import annotations
 
+from datetime import date
 from typing import Any
 
-from PyQt6.QtCore import QAbstractTableModel, QModelIndex, Qt
+from PyQt6.QtCore import QAbstractTableModel, QDate, QModelIndex, Qt
 
 
 class TransactionTableModel(QAbstractTableModel):
     HEADERS = ("Date", "Portfolio", "Security", "Kind", "Shares", "External cash", "Income", "Status")
+    SORT_ROLE = Qt.ItemDataRole.UserRole + 1
 
     def __init__(self, rows: list[Any] | None = None, parent=None) -> None:
         super().__init__(parent)
@@ -34,7 +36,15 @@ class TransactionTableModel(QAbstractTableModel):
         row = self.rows[index.row()]
         if role == Qt.ItemDataRole.UserRole:
             return row[0]
+        if role == self.SORT_ROLE:
+            value = row[index.column() + 1]
+            if isinstance(value, date):
+                return QDate(value.year, value.month, value.day)
+            return value
         if role not in (Qt.ItemDataRole.DisplayRole, Qt.ItemDataRole.EditRole):
             return None
         values = row[1:]
-        return str(values[index.column()])
+        value = values[index.column()]
+        if role == Qt.ItemDataRole.DisplayRole and index.column() in (4, 5, 6):
+            return f"{int(value):,}"
+        return str(value) if role == Qt.ItemDataRole.DisplayRole else value

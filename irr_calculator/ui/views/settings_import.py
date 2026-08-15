@@ -9,6 +9,7 @@ from PyQt6.QtWidgets import (
     QMessageBox, QPushButton, QVBoxLayout, QWidget,
 )
 
+from ... import __version__
 from ...database import backup_database
 from ...migrations import import_legacy_database
 from ...preferences import save_finmind_token
@@ -27,6 +28,12 @@ class SettingsImportView(QWidget):
         layout = QVBoxLayout(self)
         layout.setContentsMargins(4, 4, 12, 20)
         layout.setSpacing(14)
+
+        application = QGroupBox("Application")
+        application_form = QFormLayout(application)
+        self.version_value = QLabel(__version__)
+        application_form.addRow("Version", self.version_value)
+        layout.addWidget(application)
 
         provider = QGroupBox("FinMind provider")
         provider_form = QFormLayout(provider)

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import json
 
-from PyQt6.QtCore import QSortFilterProxyModel, Qt
+from PyQt6.QtCore import QSortFilterProxyModel, Qt, pyqtSignal
 from PyQt6.QtWidgets import (
     QHBoxLayout, QLineEdit, QMessageBox, QPushButton, QTableView, QTextEdit,
     QVBoxLayout, QWidget, QDialog, QDialogButtonBox,
@@ -17,6 +17,8 @@ from ..models import TransactionTableModel
 
 
 class HistoryView(QWidget):
+    data_changed = pyqtSignal()
+
     def __init__(self, session_factory, parent=None) -> None:
         super().__init__(parent)
         self.factory = session_factory
@@ -40,6 +42,7 @@ class HistoryView(QWidget):
         self.model = TransactionTableModel()
         self.proxy = QSortFilterProxyModel(self)
         self.proxy.setSourceModel(self.model)
+        self.proxy.setSortRole(TransactionTableModel.SORT_ROLE)
         self.proxy.setFilterKeyColumn(-1)
         self.proxy.setFilterCaseSensitivity(Qt.CaseSensitivity.CaseInsensitive)
         self.table = QTableView()
@@ -87,7 +90,8 @@ class HistoryView(QWidget):
                 delete_transaction(session, transaction_id)
         except ValidationError as error:
             QMessageBox.warning(self, "Delete transaction", str(error))
-        self.reload()
+            return
+        self.data_changed.emit()
 
     def edit_selected(self) -> None:
         transaction_id = self._selected_id()
@@ -103,7 +107,8 @@ class HistoryView(QWidget):
                 edit_transaction(session, transaction_id, dialog.result_data)
         except ValidationError as error:
             QMessageBox.warning(self, "Edit transaction", str(error))
-        self.reload()
+            return
+        self.data_changed.emit()
 
     def restore_selected(self) -> None:
         transaction_id = self._selected_id()
@@ -114,7 +119,8 @@ class HistoryView(QWidget):
                 restore_transaction(session, transaction_id)
         except ValidationError as error:
             QMessageBox.warning(self, "Restore transaction", str(error))
-        self.reload()
+            return
+        self.data_changed.emit()
 
     def show_audit(self) -> None:
         transaction_id = self._selected_id()
