@@ -1,7 +1,7 @@
 from itertools import pairwise
 
 from PyQt6.QtCore import Qt
-from PyQt6.QtWidgets import QFormLayout, QGroupBox
+from PyQt6.QtWidgets import QAbstractSpinBox, QFormLayout, QGroupBox
 
 from irr_calculator.ui.main_window import MainWindow
 
@@ -14,7 +14,19 @@ def test_projection_is_separate_from_dashboard_and_years_accept_zero(qtbot, db):
 
     assert window.PAGE_NAMES[1] == "Projection"
     assert not hasattr(window.dashboard, "years")
+    assert set(window.dashboard.cards) == {
+        "Total assets",
+        "Total profit",
+        "Annual IRR",
+        "Monthly IRR",
+        "Dividend income",
+    }
     years = window.projection.years
+    assert years.buttonSymbols() == QAbstractSpinBox.ButtonSymbols.NoButtons
+    assert all(
+        control.buttonSymbols() == QAbstractSpinBox.ButtonSymbols.NoButtons
+        for control in window.projection.rates
+    )
     assert years.minimum() == 0
     assert years.maximum() == 100
     assert not years.keyboardTracking()
@@ -57,9 +69,7 @@ def test_accounting_details_form_has_room_between_rows(qtbot, db):
 
     fields = (
         window.transactions.shares,
-        window.transactions.trade_amount,
-        window.transactions.cash_flow,
-        window.transactions.income,
+        window.transactions.amount,
     )
     assert all(field.height() >= 42 for field in fields)
     gaps = [
@@ -67,4 +77,4 @@ def test_accounting_details_form_has_room_between_rows(qtbot, db):
         for upper, lower in pairwise(fields)
     ]
     assert min(gaps) >= 14
-    assert window.transactions.verticalScrollBar().maximum() > 0
+    assert window.transactions.verticalScrollBar().maximum() == 0

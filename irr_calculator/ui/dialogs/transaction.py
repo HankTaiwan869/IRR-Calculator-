@@ -4,12 +4,14 @@ from datetime import date
 
 from PyQt6.QtCore import QDate
 from PyQt6.QtWidgets import (
+    QAbstractSpinBox,
     QComboBox,
     QDateEdit,
     QDialog,
     QDialogButtonBox,
     QDoubleSpinBox,
     QFormLayout,
+    QLabel,
     QMessageBox,
     QVBoxLayout,
 )
@@ -36,10 +38,8 @@ class TransactionDialog(QDialog):
         self.trade_date = QDateEdit()
         self.trade_date.setCalendarPopup(True)
         self.trade_date.setMaximumDate(QDate.currentDate())
-        self.shares = self._number(signed=True)
-        self.cash = self._number(signed=True)
-        self.trade = self._number()
-        self.income = self._number()
+        self.shares = self._number()
+        self.amount = self._number()
         with self.factory() as session:
             portfolios = list(
                 session.scalars(select(Portfolio).order_by(Portfolio.name))
@@ -59,12 +59,15 @@ class TransactionDialog(QDialog):
             ("Security", self.security),
             ("Activity", self.kind),
             ("Date", self.trade_date),
-            ("Signed shares", self.shares),
-            ("External cash", self.cash),
-            ("Trade amount", self.trade),
-            ("Dividend income", self.income),
+            ("Shares", self.shares),
+            ("Amount", self.amount),
         ):
             form.addRow(label, widget)
+        self.help = QLabel()
+        self.help.setWordWrap(True)
+        self.help.setObjectName("muted")
+        form.addRow(self.help)
+        self.kind.currentIndexChanged.connect(self._kind_changed)
         layout.addLayout(form)
         buttons = QDialogButtonBox(
             QDialogButtonBox.StandardButton.Save
@@ -76,12 +79,12 @@ class TransactionDialog(QDialog):
         self._populate()
 
     @staticmethod
-    def _number(signed: bool = False) -> QDoubleSpinBox:
+    def _number() -> QDoubleSpinBox:
         widget = QDoubleSpinBox()
         widget.setDecimals(0)
         widget.setMaximum(999_999_999_999)
-        if signed:
-            widget.setMinimum(-999_999_999_999)
+        widget.setMinimum(0)
+        widget.setButtonSymbols(QAbstractSpinBox.ButtonSymbols.NoButtons)
         return widget
 
     def _populate(self) -> None:
@@ -92,24 +95,57 @@ class TransactionDialog(QDialog):
         self.trade_date.setDate(
             QDate(row.trade_date.year, row.trade_date.month, row.trade_date.day)
         )
-        self.shares.setValue(row.shares_delta)
-        self.cash.setValue(row.external_cash_flow)
-        self.trade.setValue(row.trade_amount)
-        self.income.setValue(row.income_amount)
+        kind = TransactionKind(row.kind)
+        # Regular activities display unsigned values; legacy imported cash
+        # flows retain their signed amount because direction is not inferable.
+        self.shares.setValue(abs(row.shares_delta))
+        self.amount.setValue(
+            row.amount if kind is TransactionKind.LEGACY_CASH_FLOW else abs(row.amount)
+        )
+        self._kind_changed()
+
+    def _kind_changed(self) -> None:
+        kind = self.kind.currentData()
+        reinvested = kind is TransactionKind.REINVESTED_DIVIDEND
+        dividend = kind is TransactionKind.DIVIDEND
+        opening = kind is TransactionKind.OPENING_POSITION
+        legacy = kind is TransactionKind.LEGACY_CASH_FLOW
+        self.amount.setMinimum(-999_999_999_999 if legacy else 0)
+        self.help.setText(
+            "A reinvested dividend adds shares with zero owner cash flow and does not count as dividend income."
+            if reinvested
+            else "Enter the paid dividend amount; it is included in total dividend income."
+            if dividend
+            else "An opening position adds existing shares; enter the initial or deemed investment amount."
+            if opening
+            else "A legacy cash flow uses zero shares and a nonzero signed amount."
+            if legacy
+            else "Buys add shares and deduct the amount. Sells remove shares and add the amount."
+        )
+        self._set_applicable(self.shares, not (dividend or legacy))
+        self._set_applicable(self.amount, not reinvested)
+
+    @staticmethod
+    def _set_applicable(widget: QDoubleSpinBox, applicable: bool) -> None:
+        widget.setEnabled(applicable)
+        if not applicable:
+            widget.setValue(0)
 
     def accept(self) -> None:
         qdate = self.trade_date.date()
+        kind = self.kind.currentData()
+        shares, amount = self._signed_values(
+            kind, int(self.shares.value()), int(self.amount.value())
+        )
         try:
             self.result_data = validate(
                 TransactionInput(
                     portfolio_id=self.portfolio.currentData(),
                     security_id=self.security.currentData(),
-                    kind=self.kind.currentData(),
+                    kind=kind,
                     trade_date=date(qdate.year(), qdate.month(), qdate.day()),
-                    shares_delta=int(self.shares.value()),
-                    external_cash_flow=int(self.cash.value()),
-                    trade_amount=int(self.trade.value()),
-                    income_amount=int(self.income.value()),
+                    shares_delta=shares,
+                    amount=amount,
                     source_key=self.transaction.source_key,
                 )
             )
@@ -117,3 +153,21 @@ class TransactionDialog(QDialog):
             QMessageBox.warning(self, "Transaction not valid", str(error))
             return
         super().accept()
+
+    @staticmethod
+    def _signed_values(
+        kind: TransactionKind, shares: int, amount: int
+    ) -> tuple[int, int]:
+        """Convert form values to the signed transaction ledger convention."""
+        if kind is TransactionKind.BUY:
+            return shares, -amount
+        if kind is TransactionKind.SELL:
+            return -shares, amount
+        if kind is TransactionKind.DIVIDEND:
+            return 0, amount
+        if kind is TransactionKind.REINVESTED_DIVIDEND:
+            return shares, 0
+        if kind is TransactionKind.OPENING_POSITION:
+            return shares, -amount
+        # Imported legacy cash flows must preserve their original direction.
+        return 0, amount

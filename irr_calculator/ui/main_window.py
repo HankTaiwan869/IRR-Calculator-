@@ -15,6 +15,7 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 
+from .. import __version__
 from ..preferences import get_finmind_token
 from ..providers import FinMindProvider
 from ..services.quotes import refresh_prices
@@ -34,8 +35,8 @@ class MainWindow(QMainWindow):
         "Dashboard",
         "Projection",
         "Transactions",
-        "History",
         "Portfolios",
+        "History",
         "Settings",
     )
 
@@ -43,7 +44,7 @@ class MainWindow(QMainWindow):
         super().__init__(parent)
         self.factory = session_factory
         self.pool = QThreadPool.globalInstance()
-        self.setWindowTitle("IRR Calculator")
+        self.setWindowTitle("Financial Hub")
         self.resize(1240, 800)
         self.setMinimumSize(900, 620)
         root = QWidget()
@@ -58,7 +59,7 @@ class MainWindow(QMainWindow):
         sidebar.setFixedWidth(230)
         side_layout = QVBoxLayout(sidebar)
         side_layout.setContentsMargins(12, 12, 12, 18)
-        brand = QLabel("IRR Calculator")
+        brand = QLabel("Financial Hub")
         brand.setObjectName("brand")
         side_layout.addWidget(brand)
         self.nav_buttons: list[QPushButton] = []
@@ -72,9 +73,9 @@ class MainWindow(QMainWindow):
             self.nav_buttons.append(button)
             side_layout.addWidget(button)
         side_layout.addStretch()
-        version = QLabel("Local · TWD · Taiwan")
-        version.setStyleSheet("color: #8fa0ba; padding: 8px;")
-        side_layout.addWidget(version)
+        self.version_label = QLabel(f"Version {__version__}")
+        self.version_label.setStyleSheet("color: #8fa0ba; padding: 8px;")
+        side_layout.addWidget(self.version_label)
         outer.addWidget(sidebar)
 
         main = QWidget()

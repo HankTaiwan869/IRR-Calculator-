@@ -40,7 +40,6 @@ def test_daily_cycle_cache_works_when_market_date_is_older_and_failure_keeps_quo
                 date(2025, 1, 1),
                 1,
                 -90,
-                90,
             ),
         )
     provider = FakeProvider()
@@ -71,7 +70,6 @@ def test_refresh_normalizes_provider_close_to_half_up_integer(db):
                 date(2025, 1, 1),
                 1,
                 -90,
-                90,
             ),
         )
 
@@ -106,7 +104,6 @@ def test_all_portfolios_refresh_excludes_archived_but_explicit_refresh_includes_
                 date(2025, 1, 1),
                 1,
                 -90,
-                90,
             ),
         )
         create_transaction(
@@ -118,7 +115,6 @@ def test_all_portfolios_refresh_excludes_archived_but_explicit_refresh_includes_
                 date(2025, 1, 1),
                 1,
                 -50,
-                50,
             ),
         )
 

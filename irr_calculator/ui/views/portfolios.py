@@ -12,11 +12,12 @@ from PyQt6.QtWidgets import (
     QVBoxLayout,
     QWidget,
 )
-from sqlalchemy import delete, func, select
+from sqlalchemy import and_, delete, func, select
 from sqlalchemy.exc import IntegrityError
 
 from ...models import Portfolio, Transaction, TransactionAudit
 from ..dialogs import PortfolioDialog
+from ..table_selection import use_check_row_selection
 
 
 class PortfoliosView(QWidget):
@@ -42,6 +43,7 @@ class PortfoliosView(QWidget):
         self.table.setHorizontalHeaderLabels(("Name", "Status", "Transactions"))
         self.table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
         self.table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
+        use_check_row_selection(self.table)
         self.table.horizontalHeader().setStretchLastSection(True)
         layout.addWidget(self.table)
         new_button.clicked.connect(self.create)
@@ -54,7 +56,13 @@ class PortfoliosView(QWidget):
         with self.factory() as session:
             records = session.execute(
                 select(Portfolio, func.count(Transaction.id))
-                .outerjoin(Transaction)
+                .outerjoin(
+                    Transaction,
+                    and_(
+                        Transaction.portfolio_id == Portfolio.id,
+                        Transaction.deleted_at.is_(None),
+                    ),
+                )
                 .group_by(Portfolio.id)
                 .order_by(Portfolio.name)
             ).all()
@@ -125,7 +133,10 @@ class PortfoliosView(QWidget):
             count = session.scalar(
                 select(func.count())
                 .select_from(Transaction)
-                .where(Transaction.portfolio_id == portfolio_id)
+                .where(
+                    Transaction.portfolio_id == portfolio_id,
+                    Transaction.deleted_at.is_(None),
+                )
             )
             name = portfolio.name
         noun = "transaction" if count == 1 else "transactions"

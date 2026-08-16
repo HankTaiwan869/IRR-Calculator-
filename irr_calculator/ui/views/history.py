@@ -22,10 +22,10 @@ from ...models import Portfolio, Security, Transaction, TransactionAudit
 from ...services.transactions import (
     delete_transaction,
     edit_transaction,
-    restore_transaction,
 )
 from ..dialogs import TransactionDialog
 from ..models import TransactionTableModel
+from ..table_selection import use_check_row_selection
 
 
 class HistoryView(QWidget):
@@ -38,16 +38,14 @@ class HistoryView(QWidget):
         layout.setContentsMargins(4, 4, 12, 20)
         toolbar = QHBoxLayout()
         self.search = QLineEdit()
-        self.search.setPlaceholderText("Filter portfolio, security, kind, or date…")
+        self.search.setPlaceholderText("Filter portfolio, security, type, or date…")
         toolbar.addWidget(self.search, 1)
         self.delete_button = QPushButton("Delete")
         self.delete_button.setObjectName("danger")
-        self.restore_button = QPushButton("Restore")
         audit_button = QPushButton("Audit details")
         edit_button = QPushButton("Edit")
         toolbar.addWidget(audit_button)
         toolbar.addWidget(edit_button)
-        toolbar.addWidget(self.restore_button)
         toolbar.addWidget(self.delete_button)
         layout.addLayout(toolbar)
 
@@ -62,11 +60,12 @@ class HistoryView(QWidget):
         self.table.setSortingEnabled(True)
         self.table.setAlternatingRowColors(True)
         self.table.setSelectionBehavior(QTableView.SelectionBehavior.SelectRows)
+        self.table.setEditTriggers(QTableView.EditTrigger.NoEditTriggers)
+        use_check_row_selection(self.table)
         self.table.horizontalHeader().setStretchLastSection(True)
         layout.addWidget(self.table, 1)
         self.search.textChanged.connect(self.proxy.setFilterFixedString)
         self.delete_button.clicked.connect(self.delete_selected)
-        self.restore_button.clicked.connect(self.restore_selected)
         audit_button.clicked.connect(self.show_audit)
         edit_button.clicked.connect(self.edit_selected)
         self.reload()
@@ -77,6 +76,7 @@ class HistoryView(QWidget):
                 select(Transaction, Portfolio.name, Security.symbol)
                 .join(Portfolio, Portfolio.id == Transaction.portfolio_id)
                 .outerjoin(Security, Security.id == Transaction.security_id)
+                .where(Transaction.deleted_at.is_(None))
                 .order_by(Transaction.trade_date.desc(), Transaction.id.desc())
             ).all()
         rows = []
@@ -89,9 +89,7 @@ class HistoryView(QWidget):
                     symbol or "—",
                     transaction.kind.replace("_", " "),
                     transaction.shares_delta,
-                    transaction.external_cash_flow,
-                    transaction.income_amount,
-                    "Deleted" if transaction.deleted_at else "Active",
+                    transaction.amount,
                 )
             )
         self.model.set_rows(rows)
@@ -112,7 +110,7 @@ class HistoryView(QWidget):
             or QMessageBox.question(
                 self,
                 "Delete transaction",
-                "Soft-delete the selected transaction? The change will be audited.",
+                "Permanently delete the selected transaction? This cannot be undone.",
             )
             != QMessageBox.StandardButton.Yes
         ):
@@ -139,18 +137,6 @@ class HistoryView(QWidget):
                 edit_transaction(session, transaction_id, dialog.result_data)
         except ValidationError as error:
             QMessageBox.warning(self, "Edit transaction", str(error))
-            return
-        self.data_changed.emit()
-
-    def restore_selected(self) -> None:
-        transaction_id = self._selected_id()
-        if transaction_id is None:
-            return
-        try:
-            with self.factory.begin() as session:
-                restore_transaction(session, transaction_id)
-        except ValidationError as error:
-            QMessageBox.warning(self, "Restore transaction", str(error))
             return
         self.data_changed.emit()
 

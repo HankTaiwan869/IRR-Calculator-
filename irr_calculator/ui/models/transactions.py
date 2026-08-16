@@ -13,11 +13,9 @@ class TransactionTableModel(QAbstractTableModel):
         "Date",
         "Portfolio",
         "Security",
-        "Kind",
+        "Type",
         "Shares",
-        "External cash",
-        "Income",
-        "Status",
+        "Amount",
     )
     SORT_ROLE = Qt.ItemDataRole.UserRole + 1
 
@@ -64,6 +62,6 @@ class TransactionTableModel(QAbstractTableModel):
             return None
         values = row[1:]
         value = values[index.column()]
-        if role == Qt.ItemDataRole.DisplayRole and index.column() in (4, 5, 6):
+        if role == Qt.ItemDataRole.DisplayRole and index.column() in (4, 5):
             return f"{int(value):,}"
         return str(value) if role == Qt.ItemDataRole.DisplayRole else value

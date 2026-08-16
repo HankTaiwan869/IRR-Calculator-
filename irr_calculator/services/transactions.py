@@ -1,11 +1,11 @@
 from __future__ import annotations
 
 from dataclasses import asdict, dataclass
-from datetime import UTC, date, datetime
+from datetime import date, datetime
 from decimal import Decimal
 from typing import Any
 
-from sqlalchemy import select
+from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
 
 from ..exceptions import ValidationError
@@ -21,9 +21,7 @@ class TransactionInput:
     kind: TransactionKind | str
     trade_date: date
     shares_delta: int = ZERO
-    external_cash_flow: int = ZERO
-    trade_amount: int = ZERO
-    income_amount: int = ZERO
+    amount: int = ZERO
     source_key: str | None = None
 
 
@@ -48,9 +46,7 @@ def normalized(data: TransactionInput) -> TransactionInput:
         kind=kind,
         trade_date=data.trade_date,
         shares_delta=_integer(data.shares_delta, "Shares"),
-        external_cash_flow=_integer(data.external_cash_flow, "External cash flow"),
-        trade_amount=_integer(data.trade_amount, "Trade amount"),
-        income_amount=_integer(data.income_amount, "Income amount"),
+        amount=_integer(data.amount, "Amount"),
         source_key=data.source_key,
     )
 
@@ -58,80 +54,37 @@ def normalized(data: TransactionInput) -> TransactionInput:
 def validate(data: TransactionInput) -> TransactionInput:
     data = normalized(data)
     kind = TransactionKind(data.kind)
-    if data.trade_amount < ZERO or data.income_amount < ZERO:
-        raise ValidationError("Trade amount and income cannot be negative.")
     if kind is not TransactionKind.LEGACY_CASH_FLOW and data.security_id is None:
         raise ValidationError("A security is required for this transaction.")
     if kind is TransactionKind.BUY:
-        if (
-            data.shares_delta <= ZERO
-            or data.external_cash_flow >= ZERO
-            or data.trade_amount <= ZERO
-        ):
+        if data.shares_delta <= ZERO or data.amount >= ZERO:
             raise ValidationError(
-                "A buy requires positive shares, negative external cash, and a trade amount."
+                "A buy requires positive shares and a negative amount."
             )
-        if data.income_amount != ZERO:
-            raise ValidationError("A buy cannot contain dividend income.")
-        if data.external_cash_flow != -data.trade_amount:
-            raise ValidationError("Buy cash flow must equal negative trade amount.")
     elif kind is TransactionKind.SELL:
-        if (
-            data.shares_delta >= ZERO
-            or data.external_cash_flow <= ZERO
-            or data.trade_amount <= ZERO
-        ):
+        if data.shares_delta >= ZERO or data.amount <= ZERO:
             raise ValidationError(
-                "A sell requires negative shares, positive external cash, and a trade amount."
+                "A sell requires negative shares and a positive amount."
             )
-        if data.income_amount != ZERO:
-            raise ValidationError("A sell cannot contain dividend income.")
-        if data.external_cash_flow != data.trade_amount:
-            raise ValidationError("Sell cash flow must equal trade amount.")
     elif kind is TransactionKind.DIVIDEND:
-        if data.shares_delta != ZERO or data.income_amount <= ZERO:
+        if data.shares_delta != ZERO or data.amount <= ZERO:
             raise ValidationError(
-                "A paid-out dividend requires zero shares and positive income."
+                "A paid-out dividend requires zero shares and a positive amount."
             )
-        if data.external_cash_flow != data.income_amount:
-            raise ValidationError(
-                "Paid-out dividend cash flow must equal dividend income."
-            )
-        if data.trade_amount != ZERO:
-            raise ValidationError("A paid-out dividend cannot contain a trade.")
     elif kind is TransactionKind.REINVESTED_DIVIDEND:
-        if (
-            data.shares_delta <= ZERO
-            or data.income_amount <= ZERO
-            or data.trade_amount <= ZERO
-        ):
+        if data.shares_delta <= ZERO or data.amount != ZERO:
             raise ValidationError(
-                "A reinvested dividend requires positive shares, income, and acquisition cost."
-            )
-        residual = data.income_amount - data.trade_amount
-        if data.external_cash_flow != residual:
-            raise ValidationError(
-                "Reinvestment cash flow must classify the dividend remainder or owner top-up."
+                "A reinvested dividend requires positive shares and a zero amount."
             )
     elif kind is TransactionKind.OPENING_POSITION:
-        if (
-            data.shares_delta <= ZERO
-            or data.external_cash_flow != ZERO
-            or data.income_amount != ZERO
-        ):
+        if data.shares_delta <= ZERO or data.amount >= ZERO:
             raise ValidationError(
-                "An opening position requires positive shares and zero cash/income."
+                "An opening position requires positive shares and a negative amount."
             )
     elif kind is TransactionKind.LEGACY_CASH_FLOW:
-        if (
-            data.shares_delta != ZERO
-            or data.trade_amount != ZERO
-            or data.income_amount != ZERO
-        ):
-            raise ValidationError(
-                "A legacy cash flow cannot contain shares, a trade, or income."
-            )
-        if data.external_cash_flow == ZERO:
+        if data.shares_delta != ZERO:
+            raise ValidationError("A legacy cash flow cannot contain shares.")
+        if data.amount == ZERO:
             raise ValidationError("A legacy cash flow cannot be zero.")
     return data
 
@@ -143,9 +96,7 @@ def snapshot(transaction: Transaction) -> dict[str, Any]:
         "kind",
         "trade_date",
         "shares_delta",
-        "external_cash_flow",
-        "trade_amount",
-        "income_amount",
+        "amount",
         "source_key",
         "deleted_at",
     )
@@ -224,41 +175,16 @@ def edit_transaction(
 
 def delete_transaction(session: Session, transaction_id: int) -> Transaction:
     transaction = session.get(Transaction, transaction_id)
-    if transaction is None or transaction.deleted_at is not None:
-        raise ValidationError("Active transaction not found.")
-    before = snapshot(transaction)
-    transaction.deleted_at = datetime.now(UTC)
-    session.flush()
-    _assert_nonnegative_ledger(
-        session, transaction.portfolio_id, transaction.security_id
-    )
-    session.add(
-        TransactionAudit(
-            transaction_id=transaction.id,
-            action="DELETE",
-            before=before,
-            after=snapshot(transaction),
+    if transaction is None:
+        raise ValidationError("Transaction not found.")
+    scope = (transaction.portfolio_id, transaction.security_id)
+    session.execute(
+        delete(TransactionAudit).where(
+            TransactionAudit.transaction_id == transaction_id
         )
     )
-    return transaction
-
-
-def restore_transaction(session: Session, transaction_id: int) -> Transaction:
-    transaction = session.get(Transaction, transaction_id)
-    if transaction is None or transaction.deleted_at is None:
-        raise ValidationError("Deleted transaction not found.")
-    before = snapshot(transaction)
-    transaction.deleted_at = None
+    session.delete(transaction)
     session.flush()
-    _assert_nonnegative_ledger(
-        session, transaction.portfolio_id, transaction.security_id
-    )
-    session.add(
-        TransactionAudit(
-            transaction_id=transaction.id,
-            action="RESTORE",
-            before=before,
-            after=snapshot(transaction),
-        )
-    )
+    _assert_nonnegative_ledger(session, *scope)
     return transaction
+

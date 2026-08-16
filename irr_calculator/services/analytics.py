@@ -8,7 +8,7 @@ from pyxirr import xirr
 from sqlalchemy import Select, select
 from sqlalchemy.orm import Session
 
-from ..models import Portfolio, Quote, Security, Transaction
+from ..models import Portfolio, Quote, Security, Transaction, TransactionKind
 from .ledger import LedgerResult, replay_ledger
 
 ZERO = 0
@@ -19,19 +19,13 @@ class Position:
     security_id: int
     symbol: str
     shares: int
-    cost_basis: int
     market_value: int | None
-    realized_profit: int
     dividend_income: int
-    cost_basis_complete: bool
 
 
 @dataclass(frozen=True, slots=True)
 class PortfolioSummary:
     total_assets: int | None
-    cost_basis: int
-    realized_profit: int
-    unrealized_profit: int | None
     dividend_income: int
     total_profit: int | None
     annual_irr: float | None
@@ -57,9 +51,9 @@ def calculate_xirr(
     rows: list[Transaction], terminal_value: int, valuation_date: date
 ) -> float | None:
     dated = [
-        (row.trade_date, float(row.external_cash_flow))
+        (row.trade_date, float(row.amount))
         for row in rows
-        if row.trade_date <= valuation_date and row.external_cash_flow != ZERO
+        if row.trade_date <= valuation_date and row.amount != ZERO
     ]
     if terminal_value != ZERO:
         dated.append((valuation_date, float(terminal_value)))
@@ -99,9 +93,7 @@ def portfolio_summary(
     positions: list[Position] = []
     for security_id, ledgers in by_security.items():
         shares = sum((ledger.shares for ledger in ledgers), ZERO)
-        cost_basis = sum((ledger.cost_basis for ledger in ledgers), ZERO)
-        realized_profit = sum((ledger.realized_profit for ledger in ledgers), ZERO)
-        dividend_income = sum((ledger.dividend_income for ledger in ledgers), ZERO)
+        dividends = sum((ledger.dividend_income for ledger in ledgers), ZERO)
         security = session.get(Security, security_id)
         quote = session.scalar(
             select(Quote)
@@ -117,37 +109,42 @@ def portfolio_summary(
                 security_id=security_id,
                 symbol=security.symbol if security else str(security_id),
                 shares=shares,
-                cost_basis=cost_basis,
                 market_value=market_value,
-                realized_profit=realized_profit,
-                dividend_income=dividend_income,
-                cost_basis_complete=all(
-                    ledger.cost_basis_complete for ledger in ledgers
-                ),
+                dividend_income=dividends,
             )
         )
 
     priced_assets = sum((item.market_value or ZERO for item in positions), ZERO)
-    cost_basis = sum((item.cost_basis for item in positions), ZERO)
-    realized = sum((item.realized_profit for item in positions), ZERO)
-    dividends = sum((item.dividend_income for item in positions), ZERO)
     missing_open_value = any(
         item.shares != ZERO and item.market_value is None for item in positions
     )
     total_assets = None if missing_open_value else priced_assets
-    unrealized = None if total_assets is None else total_assets - cost_basis
-    total_profit = None if unrealized is None else unrealized + realized + dividends
+    opening_complete = all(
+        ledger.opening_position_complete
+        for ledgers in by_security.values()
+        for ledger in ledgers
+    )
+    dividends = sum(
+        (
+            row.amount
+            for row in rows
+            if TransactionKind(row.kind) is TransactionKind.DIVIDEND
+        ),
+        ZERO,
+    )
+    total_profit = (
+        None
+        if total_assets is None or not opening_complete
+        else total_assets + sum((row.amount for row in rows), ZERO)
+    )
     annual = (
         None
-        if total_assets is None
+        if total_assets is None or not opening_complete
         else calculate_xirr(rows, total_assets, valuation_date)
     )
     monthly = None if annual is None or annual <= -1 else (1 + annual) ** (1 / 12) - 1
     return PortfolioSummary(
         total_assets,
-        cost_basis,
-        realized,
-        unrealized,
         dividends,
         total_profit,
         annual,

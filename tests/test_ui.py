@@ -34,17 +34,17 @@ def test_main_window_navigation_and_deferred_plotly_chart(qtbot, db):
     assert rendered == [True]
     qtbot.mouseClick(window.nav_buttons[3], Qt.MouseButton.LeftButton)
     assert window.stack.currentIndex() == 3
-    assert window.title.text() == "History"
+    assert window.title.text() == "Portfolios"
 
 
 def test_transaction_table_model():
     from irr_calculator.ui.models import TransactionTableModel
 
     model = TransactionTableModel(
-        [(42, "2025-01-01", "Core", "2330", "BUY", 10, -100, 0, "Active")]
+        [(42, "2025-01-01", "Core", "2330", "BUY", 10, -100)]
     )
     assert model.rowCount() == 1
-    assert model.columnCount() == 8
+    assert model.columnCount() == 6
     assert model.index(0, 0).data() == "2025-01-01"
     assert model.index(0, 0).data(Qt.ItemDataRole.UserRole) == 42
 

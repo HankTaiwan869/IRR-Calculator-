@@ -39,7 +39,7 @@ def test_legacy_import_is_idempotent_and_reconcilable(db, tmp_path):
                 select(Transaction).where(Transaction.portfolio_id == imported.id)
             )
         )
-        assert sum((item.external_cash_flow for item in rows), 0) == -95
+        assert sum((item.amount for item in rows), 0) == -95
         security_id = rows[0].security_id
     with factory.begin() as session:
         reconcile_opening_position(
@@ -48,6 +48,7 @@ def test_legacy_import_is_idempotent_and_reconcilable(db, tmp_path):
             security_id,
             __import__("datetime").date(2024, 12, 31),
             10,
+            100,
         )
     with factory() as session:
         ledger = replay_ledger(
@@ -58,7 +59,7 @@ def test_legacy_import_is_idempotent_and_reconcilable(db, tmp_path):
             )
         )
     assert ledger.shares == 10
-    assert not ledger.cost_basis_complete
+    assert ledger.opening_position_complete
 
 
 def test_legacy_import_rounds_fractional_cash_flows_half_up(db, tmp_path):
@@ -82,5 +83,5 @@ def test_legacy_import_rounds_fractional_cash_flows_half_up(db, tmp_path):
                 select(Transaction).where(Transaction.source_key.is_not(None))
             )
         )
-    assert [row.external_cash_flow for row in rows] == [-101, 6]
-    assert all(type(row.external_cash_flow) is int for row in rows)
+    assert [row.amount for row in rows] == [-101, 6]
+    assert all(type(row.amount) is int for row in rows)

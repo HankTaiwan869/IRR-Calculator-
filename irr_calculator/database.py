@@ -11,7 +11,7 @@ from sqlalchemy.orm import Session, sessionmaker
 
 from .models import Base, Portfolio, SchemaMeta
 
-SCHEMA_VERSION = "3"
+SCHEMA_VERSION = "4"
 
 _AUDIT_INTEGER_FIELDS = {
     "shares_delta",
@@ -25,6 +25,8 @@ _AUDIT_INTEGER_FIELDS = {
 
 def app_data_dir() -> Path:
     base = Path(os.environ.get("LOCALAPPDATA", Path.home() / "AppData" / "Local"))
+    # Keep this directory stable so existing portfolios remain available when
+    # the user-facing application name changes.
     return base / "IRRCalculator"
 
 
@@ -60,7 +62,11 @@ def initialize_database(engine: Engine) -> None:
         current_version = "2"
     if current_version == "2":
         _migrate_v2_to_v3(engine)
-    elif current_version != SCHEMA_VERSION:
+        current_version = "3"
+    if current_version == "3":
+        _migrate_v3_to_v4(engine)
+        current_version = "4"
+    if current_version != SCHEMA_VERSION:
         raise RuntimeError(
             f"Unsupported database schema {current_version}; expected {SCHEMA_VERSION}."
         )
@@ -98,6 +104,47 @@ def _v3_snapshot(value: str | None) -> str | None:
             data["trade_amount"] = amount - fees
     data.pop("unit_price", None)
     data.pop("notes", None)
+    return json.dumps(data, separators=(",", ":"))
+
+
+def _v4_amount(
+    kind: str | None, external: object, trade: object, income: object = None
+) -> int:
+    """Translate the v3 three-field accounting model to signed ``amount``."""
+    if external is None:
+        trade_value = _round_integer(trade or 0)
+        income_value = _round_integer(income or 0)
+        cash_flow = {
+            "BUY": -abs(trade_value),
+            "SELL": abs(trade_value),
+            "DIVIDEND": income_value,
+        }.get(kind, 0)
+    else:
+        cash_flow = _round_integer(external)
+    trade_amount = _round_integer(trade or 0)
+    if kind == "REINVESTED_DIVIDEND":
+        return 0
+    if kind == "OPENING_POSITION":
+        # v3 stored opening cost in trade_amount and normally had no cash flow.
+        # A zero-cost legacy opening remains detectable as unresolved.
+        return -abs(trade_amount) if trade_amount else cash_flow
+    return cash_flow
+
+
+def _v4_snapshot(value: str | None) -> str | None:
+    if value is None:
+        return None
+    data = json.loads(value)
+    if not isinstance(data, dict):
+        return value
+    data["amount"] = _v4_amount(
+        data.get("kind"),
+        data.get("external_cash_flow"),
+        data.get("trade_amount", 0),
+        data.get("income_amount", 0),
+    )
+    for field in ("external_cash_flow", "trade_amount", "income_amount"):
+        data.pop(field, None)
     return json.dumps(data, separators=(",", ":"))
 
 
@@ -318,6 +365,150 @@ def _migrate_v2_to_v3(engine: Engine) -> None:
                     audit[2],
                     _v3_snapshot(audit[3]),
                     _v3_snapshot(audit[4]),
+                    audit[5],
+                ),
+            )
+        connection.execute(
+            "CREATE INDEX ix_transactions_portfolio_date ON transactions (portfolio_id, trade_date, id)"
+        )
+        connection.execute(
+            "CREATE INDEX ix_transactions_security_date ON transactions (security_id, trade_date, id)"
+        )
+        connection.execute(
+            "UPDATE schema_meta SET value = ? WHERE key = 'schema_version'",
+            ("3",),
+        )
+        violations = connection.execute("PRAGMA foreign_key_check").fetchall()
+        if violations:
+            raise RuntimeError(
+                f"Database migration failed foreign-key validation: {violations}"
+            )
+        connection.commit()
+    except Exception:
+        connection.rollback()
+        raise
+    finally:
+        connection.execute("PRAGMA foreign_keys=ON")
+        raw.close()
+
+
+def _migrate_v3_to_v4(engine: Engine) -> None:
+    """Replace the three v3 monetary columns with one signed amount."""
+    raw = engine.raw_connection()
+    connection: sqlite3.Connection = raw.driver_connection
+    try:
+        connection.commit()
+        connection.execute("PRAGMA foreign_keys=OFF")
+        connection.execute("BEGIN IMMEDIATE")
+        connection.execute("""
+            CREATE TABLE transactions_v4 (
+                id INTEGER NOT NULL,
+                portfolio_id INTEGER NOT NULL,
+                security_id INTEGER,
+                kind VARCHAR(32) NOT NULL,
+                trade_date DATE NOT NULL,
+                shares_delta INTEGER NOT NULL,
+                amount INTEGER NOT NULL,
+                source_key VARCHAR(200),
+                deleted_at DATETIME,
+                created_at DATETIME DEFAULT CURRENT_TIMESTAMP NOT NULL,
+                updated_at DATETIME DEFAULT CURRENT_TIMESTAMP NOT NULL,
+                PRIMARY KEY (id),
+                FOREIGN KEY(portfolio_id) REFERENCES portfolios (id),
+                FOREIGN KEY(security_id) REFERENCES securities (id),
+                UNIQUE (source_key)
+            )
+        """)
+        residual_rows = list(
+            connection.execute(
+                """
+                SELECT id, portfolio_id, security_id, trade_date,
+                       external_cash_flow, source_key, deleted_at,
+                       created_at, updated_at
+                FROM transactions
+                WHERE kind = 'REINVESTED_DIVIDEND'
+                  AND external_cash_flow <> 0
+                ORDER BY id
+                """
+            )
+        )
+        next_id = connection.execute(
+            "SELECT COALESCE(MAX(id), 0) FROM transactions"
+        ).fetchone()[0]
+        connection.execute("""
+            INSERT INTO transactions_v4 (
+                id, portfolio_id, security_id, kind, trade_date, shares_delta,
+                amount, source_key, deleted_at, created_at, updated_at
+            )
+            SELECT
+                id, portfolio_id, security_id, kind, trade_date, shares_delta,
+                CASE
+                    WHEN kind = 'REINVESTED_DIVIDEND' THEN 0
+                    WHEN kind = 'OPENING_POSITION' AND trade_amount <> 0 THEN -ABS(trade_amount)
+                    ELSE external_cash_flow
+                END,
+                source_key, deleted_at, created_at, updated_at
+            FROM transactions
+        """)
+        # v3 allowed a reinvestment's income and acquisition cost to differ;
+        # the difference was an owner cash flow (top-up or remainder). Keep
+        # that historical cash movement as a separate legacy flow while the
+        # reinvestment itself adopts the v4 zero-amount invariant.
+        for offset, row in enumerate(residual_rows, start=1):
+            source_key = (
+                f"migration:v4:reinvestment-residual:{row[0]}"
+                if row[5] is not None
+                else None
+            )
+            connection.execute(
+                """
+                INSERT INTO transactions_v4 (
+                    id, portfolio_id, security_id, kind, trade_date, shares_delta,
+                    amount, source_key, deleted_at, created_at, updated_at
+                ) VALUES (?, ?, ?, 'LEGACY_CASH_FLOW', ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    next_id + offset,
+                    row[1],
+                    row[2],
+                    row[3],
+                    0,
+                    row[4],
+                    source_key,
+                    row[6],
+                    row[7],
+                    row[8],
+                ),
+            )
+        audit_rows = list(
+            connection.execute(
+                "SELECT id, transaction_id, action, before, after, created_at FROM transaction_audit"
+            )
+        )
+        connection.execute("DROP TABLE transaction_audit")
+        connection.execute("DROP TABLE transactions")
+        connection.execute("ALTER TABLE transactions_v4 RENAME TO transactions")
+        connection.execute("""
+            CREATE TABLE transaction_audit (
+                id INTEGER NOT NULL,
+                transaction_id INTEGER NOT NULL,
+                action VARCHAR(20) NOT NULL,
+                before JSON,
+                after JSON,
+                created_at DATETIME DEFAULT CURRENT_TIMESTAMP NOT NULL,
+                PRIMARY KEY (id),
+                FOREIGN KEY(transaction_id) REFERENCES transactions (id)
+            )
+        """)
+        for audit in audit_rows:
+            connection.execute(
+                "INSERT INTO transaction_audit VALUES (?, ?, ?, ?, ?, ?)",
+                (
+                    audit[0],
+                    audit[1],
+                    audit[2],
+                    _v4_snapshot(audit[3]),
+                    _v4_snapshot(audit[4]),
                     audit[5],
                 ),
             )

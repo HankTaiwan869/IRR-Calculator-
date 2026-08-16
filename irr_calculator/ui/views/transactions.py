@@ -4,6 +4,7 @@ from datetime import date
 
 from PyQt6.QtCore import QDate, Qt, pyqtSignal
 from PyQt6.QtWidgets import (
+    QAbstractSpinBox,
     QComboBox,
     QDateEdit,
     QDoubleSpinBox,
@@ -49,7 +50,6 @@ class TransactionsView(QScrollArea):
         for kind in TransactionKind:
             if kind is not TransactionKind.LEGACY_CASH_FLOW:
                 self.kind.addItem(kind.value.replace("_", " ").title(), kind)
-        self.kind.currentIndexChanged.connect(self._kind_changed)
         self.trade_date = QDateEdit(QDate.currentDate())
         self.trade_date.setCalendarPopup(True)
         self.trade_date.setMaximumDate(QDate.currentDate())
@@ -65,18 +65,15 @@ class TransactionsView(QScrollArea):
         form.setHorizontalSpacing(24)
         form.setVerticalSpacing(14)
         self.shares = self._number()
-        self.trade_amount = self._number()
-        self.cash_flow = self._signed_number()
-        self.income = self._number()
-        form.addRow("Signed shares", self.shares)
-        form.addRow("Trade amount", self.trade_amount)
-        form.addRow("External cash flow", self.cash_flow)
-        form.addRow("Dividend income", self.income)
+        self.amount = self._number()
+        form.addRow("Shares", self.shares)
+        form.addRow("Amount", self.amount)
         self.help = QLabel()
         self.help.setWordWrap(True)
         self.help.setObjectName("muted")
         self.help.setMinimumHeight(48)
         form.addRow(self.help)
+        self.kind.currentIndexChanged.connect(self._kind_changed)
         layout.addWidget(values)
 
         actions = QHBoxLayout()
@@ -95,13 +92,9 @@ class TransactionsView(QScrollArea):
         widget = QDoubleSpinBox()
         widget.setDecimals(0)
         widget.setMaximum(999_999_999_999)
+        widget.setMinimum(0)
+        widget.setButtonSymbols(QAbstractSpinBox.ButtonSymbols.NoButtons)
         widget.setMinimumHeight(42)
-        return widget
-
-    @classmethod
-    def _signed_number(cls) -> QDoubleSpinBox:
-        widget = cls._number()
-        widget.setMinimum(-999_999_999_999)
         return widget
 
     def reload_context(self) -> None:
@@ -127,16 +120,16 @@ class TransactionsView(QScrollArea):
         dividend = kind is TransactionKind.DIVIDEND
         opening = kind is TransactionKind.OPENING_POSITION
         self.help.setText(
-            "Fully reinvested dividends normally have zero external cash flow; any difference must be entered as a paid remainder (+) or owner top-up (-)."
+            "A reinvested dividend adds shares with zero owner cash flow and does not count as dividend income."
             if reinvested
-            else "Opening positions reconcile existing shares with zero external cash. Total cost is optional; omitting it marks cost basis incomplete."
+            else "Enter the paid dividend amount; it is included in total dividend income."
+            if dividend
+            else "Enter the existing shares and their initial or deemed investment amount."
             if opening
-            else "Buys use positive shares and negative cash. Sells use negative shares and positive cash."
+            else "Enter shares and amount; the selected activity determines their ledger direction."
         )
-        self._set_applicable(self.income, reinvested or dividend)
-        self._set_applicable(self.trade_amount, not dividend)
         self._set_applicable(self.shares, not dividend)
-        self._set_applicable(self.cash_flow, not opening)
+        self._set_applicable(self.amount, not reinvested)
 
     @staticmethod
     def _set_applicable(widget: QDoubleSpinBox, applicable: bool) -> None:
@@ -168,15 +161,17 @@ class TransactionsView(QScrollArea):
             )
             return
         qdate = self.trade_date.date()
+        kind = self.kind.currentData()
+        shares, amount = self._signed_values(
+            kind, int(self.shares.value()), int(self.amount.value())
+        )
         data = TransactionInput(
             portfolio_id=portfolio_id,
             security_id=security_id,
-            kind=self.kind.currentData(),
+            kind=kind,
             trade_date=date(qdate.year(), qdate.month(), qdate.day()),
-            shares_delta=int(self.shares.value()),
-            external_cash_flow=int(self.cash_flow.value()),
-            trade_amount=int(self.trade_amount.value()),
-            income_amount=int(self.income.value()),
+            shares_delta=shares,
+            amount=amount,
         )
         try:
             with self.factory.begin() as session:
@@ -186,3 +181,22 @@ class TransactionsView(QScrollArea):
             return
         QMessageBox.information(self, "Transaction", "Transaction saved.")
         self.saved.emit()
+
+    @staticmethod
+    def _signed_values(
+        kind: TransactionKind, shares: int, amount: int
+    ) -> tuple[int, int]:
+        """Convert the nonnegative form values into the signed ledger values."""
+        if kind is TransactionKind.BUY:
+            return shares, -amount
+        if kind is TransactionKind.SELL:
+            return -shares, amount
+        if kind is TransactionKind.DIVIDEND:
+            return 0, amount
+        if kind is TransactionKind.REINVESTED_DIVIDEND:
+            return shares, 0
+        if kind is TransactionKind.OPENING_POSITION:
+            return shares, -amount
+        # The create form does not offer legacy cash flow, but preserving this
+        # branch keeps the helper safe if the activity list changes later.
+        return shares, amount

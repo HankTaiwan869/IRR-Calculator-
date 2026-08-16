@@ -19,6 +19,10 @@ from irr_calculator.models import (
 from irr_calculator.services.transactions import TransactionInput
 from irr_calculator.ui.main_window import MainWindow
 from irr_calculator.ui.models import TransactionTableModel
+from irr_calculator.ui.table_selection import (
+    SelectionIndicatorHeader,
+    UnhighlightedSelectionDelegate,
+)
 
 
 def _combo_items(combo):
@@ -89,14 +93,30 @@ def test_portfolio_changes_refresh_dependent_selectors(qtbot, db, monkeypatch):
     assert "Long term" not in _combo_items(window.transactions.portfolio)
 
 
-def test_settings_label_and_version(qtbot, db):
+def test_settings_label_and_sidebar_version(qtbot, db):
     _engine, factory, _ids = db
     window = MainWindow(factory)
     qtbot.addWidget(window)
 
     assert window.PAGE_NAMES[-1] == "Settings"
     assert window.nav_buttons[-1].text() == "Settings"
-    assert window.settings.version_value.text() == __version__
+    assert window.version_label.text() == f"Version {__version__}"
+
+
+def test_table_selection_uses_a_single_left_check(qtbot, db):
+    _engine, factory, _ids = db
+    window = MainWindow(factory)
+    qtbot.addWidget(window)
+    window.history.model.set_rows(
+        [(99, date(2026, 1, 1), "Core", "2330", "BUY", 1, -100)]
+    )
+
+    for table in (window.portfolios.table, window.history.table):
+        assert isinstance(table.itemDelegate(), UnhighlightedSelectionDelegate)
+        assert isinstance(table.verticalHeader(), SelectionIndicatorHeader)
+        assert table.editTriggers() == table.EditTrigger.NoEditTriggers
+        table.selectRow(0)
+        assert table.verticalHeader().indicator_text(0) == "✓"
 
 
 def test_nonempty_portfolio_delete_removes_transactions_and_audits(
@@ -110,9 +130,7 @@ def test_nonempty_portfolio_delete_removes_transactions_and_audits(
             kind=TransactionKind.BUY.value,
             trade_date=datetime.now().astimezone().date(),
             shares_delta=1,
-            external_cash_flow=-100,
-            trade_amount=100,
-            income_amount=0,
+            amount=-100,
         )
         session.add(transaction)
         session.flush()
@@ -120,8 +138,8 @@ def test_nonempty_portfolio_delete_removes_transactions_and_audits(
             TransactionAudit(
                 transaction_id=transaction.id,
                 action="EDIT",
-                before={"trade_amount": 90},
-                after={"trade_amount": 100},
+                before={"amount": -90},
+                after={"amount": -100},
             )
         )
 
@@ -162,10 +180,18 @@ def test_failed_portfolio_create_does_not_emit_change(qtbot, db, monkeypatch):
     assert len(changes) == 0
 
 
-def test_history_delete_and_restore_refresh_dashboard(qtbot, db, monkeypatch):
+def test_history_delete_is_permanent_and_refreshes_summaries(qtbot, db, monkeypatch):
     _engine, factory, (portfolio_id, security_id) = db
     today = datetime.now().astimezone().date()
     with factory.begin() as session:
+        transaction = Transaction(
+            portfolio_id=portfolio_id,
+            security_id=security_id,
+            kind=TransactionKind.BUY.value,
+            trade_date=today,
+            shares_delta=10,
+            amount=-100,
+        )
         session.add_all(
             (
                 Transaction(
@@ -173,11 +199,11 @@ def test_history_delete_and_restore_refresh_dashboard(qtbot, db, monkeypatch):
                     security_id=security_id,
                     kind=TransactionKind.BUY.value,
                     trade_date=today,
-                    shares_delta=10,
-                    external_cash_flow=-100,
-                    trade_amount=100,
-                    income_amount=0,
+                    shares_delta=50,
+                    amount=-500,
+                    deleted_at=datetime.now().astimezone(),
                 ),
+                transaction,
                 Quote(
                     security_id=security_id,
                     provider="FinMind",
@@ -187,6 +213,8 @@ def test_history_delete_and_restore_refresh_dashboard(qtbot, db, monkeypatch):
                 ),
             )
         )
+        session.flush()
+        transaction_id = transaction.id
 
     window = MainWindow(factory)
     qtbot.addWidget(window)
@@ -197,20 +225,18 @@ def test_history_delete_and_restore_refresh_dashboard(qtbot, db, monkeypatch):
     )
     changes = QSignalSpy(window.history.data_changed)
     assert window.dashboard.cards["Total assets"].value.text() == "NT$ 120"
+    assert window.history.model.rowCount() == 1
+    assert window.portfolios.table.item(0, 2).text() == "1"
 
     window.history.table.selectRow(0)
     window.history.delete_selected()
 
     assert len(changes) == 1
     assert window.dashboard.cards["Total assets"].value.text() == "NT$ 0"
-    assert window.history.model.index(0, 7).data() == "Deleted"
-
-    window.history.table.selectRow(0)
-    window.history.restore_selected()
-
-    assert len(changes) == 2
-    assert window.dashboard.cards["Total assets"].value.text() == "NT$ 120"
-    assert window.history.model.index(0, 7).data() == "Active"
+    assert window.history.model.rowCount() == 0
+    assert window.portfolios.table.item(0, 2).text() == "0"
+    with factory() as session:
+        assert session.get(Transaction, transaction_id) is None
 
 
 def test_history_edit_emits_only_after_success(qtbot, db, monkeypatch):
@@ -222,9 +248,7 @@ def test_history_edit_emits_only_after_success(qtbot, db, monkeypatch):
             kind=TransactionKind.BUY.value,
             trade_date=date(2025, 1, 1),
             shares_delta=10,
-            external_cash_flow=-100,
-            trade_amount=100,
-            income_amount=0,
+            amount=-100,
         )
         session.add(transaction)
         session.flush()
@@ -238,8 +262,7 @@ def test_history_edit_emits_only_after_success(qtbot, db, monkeypatch):
             kind=TransactionKind.BUY,
             trade_date=date(2025, 1, 2),
             shares_delta=10,
-            external_cash_flow=-120,
-            trade_amount=120,
+            amount=-120,
         )
 
         def __init__(self, *_args, **_kwargs):
@@ -263,7 +286,7 @@ def test_history_edit_emits_only_after_success(qtbot, db, monkeypatch):
     with factory() as session:
         edited = session.get(Transaction, transaction_id)
         assert edited.trade_date == date(2025, 1, 2)
-        assert edited.trade_amount == 120
+        assert edited.amount == -120
 
     monkeypatch.setattr(
         "irr_calculator.ui.views.history.edit_transaction",
@@ -278,9 +301,9 @@ def test_history_edit_emits_only_after_success(qtbot, db, monkeypatch):
 def test_history_proxy_sorts_native_dates_and_numbers_and_keeps_ids(qtbot):
     model = TransactionTableModel(
         [
-            (10, date(2025, 10, 1), "Core", "2330", "BUY", 10, -2, 100, "Active"),
-            (20, date(2024, 2, 1), "Core", "2330", "BUY", 2, -100, 20, "Active"),
-            (30, date(2025, 2, 1), "Core", "2330", "BUY", 100, -10, 3, "Active"),
+            (10, date(2025, 10, 1), "Core", "2330", "BUY", 10, 100),
+            (20, date(2024, 2, 1), "Core", "2330", "BUY", 2, 20),
+            (30, date(2025, 2, 1), "Core", "2330", "BUY", 100, 3),
         ]
     )
     proxy = QSortFilterProxyModel()
@@ -301,8 +324,8 @@ def test_history_proxy_sorts_native_dates_and_numbers_and_keeps_ids(qtbot):
         30,
     ]
 
-    proxy.sort(6, Qt.SortOrder.AscendingOrder)
-    assert [proxy.index(row, 6).data(Qt.ItemDataRole.UserRole) for row in range(3)] == [
+    proxy.sort(5, Qt.SortOrder.AscendingOrder)
+    assert [proxy.index(row, 5).data(Qt.ItemDataRole.UserRole) for row in range(3)] == [
         30,
         20,
         10,

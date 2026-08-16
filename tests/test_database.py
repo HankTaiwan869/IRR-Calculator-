@@ -118,20 +118,17 @@ def test_v1_decimal_schema_migrates_to_integer_columns_and_values(tmp_path):
         transaction = session.get(Transaction, 1)
         quote = session.get(Quote, 1)
         audit = session.get(TransactionAudit, 1)
-        assert session.get(SchemaMeta, "schema_version").value == "3"
-        assert (transaction.shares_delta, transaction.external_cash_flow) == (2, -101)
-        assert (transaction.trade_amount, transaction.income_amount) == (101, 0)
+        assert session.get(SchemaMeta, "schema_version").value == "4"
+        assert (transaction.shares_delta, transaction.amount) == (2, -101)
         assert quote.close == 12
         assert audit.before == {
             "kind": "BUY",
             "shares_delta": 2,
-            "external_cash_flow": -101,
-            "trade_amount": 101,
+            "amount": -101,
         }
         assert audit.after == {
             "kind": "SELL",
-            "trade_amount": 99,
-            "income_amount": 2,
+            "amount": 99,
             "unrelated": "2.5",
         }
 
@@ -148,12 +145,17 @@ def test_v1_decimal_schema_migrates_to_integer_columns_and_values(tmp_path):
             transaction_types[field] == "INTEGER"
             for field in (
                 "shares_delta",
-                "external_cash_flow",
-                "trade_amount",
-                "income_amount",
+                "amount",
             )
         )
-        assert {"unit_price", "fees", "notes"}.isdisjoint(transaction_types)
+        assert {
+            "external_cash_flow",
+            "trade_amount",
+            "income_amount",
+            "unit_price",
+            "fees",
+            "notes",
+        }.isdisjoint(transaction_types)
         assert quote_types["close"] == "INTEGER"
         assert {
             row[1] for row in connection.execute("PRAGMA index_list(transactions)")
@@ -175,9 +177,6 @@ def test_v1_decimal_schema_migrates_to_integer_columns_and_values(tmp_path):
         assert connection.execute("PRAGMA foreign_key_check").fetchall() == []
 
         with pytest.raises(sqlite3.IntegrityError):
-            connection.execute("UPDATE transactions SET trade_amount = -1 WHERE id = 1")
-        connection.rollback()
-        with pytest.raises(sqlite3.IntegrityError):
             connection.execute("UPDATE quotes SET close = 0 WHERE id = 1")
         connection.rollback()
         with pytest.raises(sqlite3.IntegrityError):
@@ -191,7 +190,7 @@ def test_v1_decimal_schema_migrates_to_integer_columns_and_values(tmp_path):
     engine.dispose()
 
 
-def test_fresh_database_uses_v3_integer_schema(tmp_path):
+def test_fresh_database_uses_v4_single_amount_schema(tmp_path):
     path = tmp_path / "fresh.sqlite3"
     engine = create_database_engine(path)
     initialize_database(engine)
@@ -199,7 +198,7 @@ def test_fresh_database_uses_v3_integer_schema(tmp_path):
     with sqlite3.connect(path) as connection:
         assert connection.execute(
             "SELECT value FROM schema_meta WHERE key = 'schema_version'"
-        ).fetchone() == ("3",)
+        ).fetchone() == ("4",)
         transaction_types = {
             row[1]: row[2]
             for row in connection.execute("PRAGMA table_info(transactions)")
@@ -208,12 +207,17 @@ def test_fresh_database_uses_v3_integer_schema(tmp_path):
             transaction_types[field] == "INTEGER"
             for field in (
                 "shares_delta",
-                "external_cash_flow",
-                "trade_amount",
-                "income_amount",
+                "amount",
             )
         )
-        assert {"unit_price", "fees", "notes"}.isdisjoint(transaction_types)
+        assert {
+            "external_cash_flow",
+            "trade_amount",
+            "income_amount",
+            "unit_price",
+            "fees",
+            "notes",
+        }.isdisjoint(transaction_types)
         assert {
             row[1]: row[2] for row in connection.execute("PRAGMA table_info(quotes)")
         }["close"] == "INTEGER"
@@ -254,7 +258,9 @@ def test_v2_fee_columns_are_folded_into_amounts_before_removal(tmp_path):
             INSERT INTO transactions VALUES
                 (1, 1, 1, 'BUY', '2025-01-01', 10, -105, 100, 0, 10, 5, 'buy', NULL, NULL, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
                 (2, 1, 1, 'SELL', '2025-02-01', -1, 90, 100, 0, 100, 10, 'sell', NULL, NULL, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
-                (3, 1, 1, 'REINVESTED_DIVIDEND', '2025-03-01', 1, -5, 100, 100, 100, 5, 'reinvest', NULL, NULL, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP);
+                (3, 1, 1, 'REINVESTED_DIVIDEND', '2025-03-01', 1, -5, 100, 100, 100, 5, 'reinvest', NULL, NULL, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
+                (4, 1, 1, 'OPENING_POSITION', '2025-01-01', 3, 0, 50, 0, NULL, 0, 'opening', NULL, NULL, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
+                (5, 1, 1, 'OPENING_POSITION', '2025-01-02', 2, 0, 0, 0, NULL, 0, 'unknown opening', NULL, NULL, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP);
             CREATE TABLE transaction_audit (
                 id INTEGER PRIMARY KEY, transaction_id INTEGER NOT NULL, action VARCHAR(20) NOT NULL,
                 before JSON, after JSON, created_at DATETIME NOT NULL,
@@ -271,21 +277,19 @@ def test_v2_fee_columns_are_folded_into_amounts_before_removal(tmp_path):
     factory = session_factory(engine)
     with factory() as session:
         rows = {row.id: row for row in session.scalars(select(Transaction))}
-        assert {row_id: row.trade_amount for row_id, row in rows.items()} == {
-            1: 105,
-            2: 90,
-            3: 105,
-        }
-        assert {row_id: row.external_cash_flow for row_id, row in rows.items()} == {
+        assert {row_id: row.amount for row_id, row in rows.items()} == {
             1: -105,
             2: 90,
-            3: -5,
+            3: 0,
+            4: -50,
+            5: 0,
+            6: -5,
         }
         assert session.get(TransactionAudit, 1).before == {
             "kind": "BUY",
-            "trade_amount": 105,
+            "amount": -105,
         }
-        assert session.get(SchemaMeta, "schema_version").value == "3"
+        assert session.get(SchemaMeta, "schema_version").value == "4"
 
     with sqlite3.connect(path) as connection:
         columns = {

@@ -1,6 +1,6 @@
 # IRR Calculator
 
-IRR Calculator is a local, English-language PyQt6 desktop application for tracking Taiwan securities in TWD. It keeps named portfolios, signed-share transactions, delayed daily prices, moving-average cost basis, realized and unrealized profit, dividend income, XIRR, and 30-year projections in a local SQLite database.
+IRR Calculator is a local, English-language PyQt6 desktop application for tracking Taiwan securities in TWD. It keeps named portfolios, activity-aware transactions, delayed daily prices, owner cash flows, total profit, dividend income, XIRR, and 30-year projections in a local SQLite database.
 
 The application is for personal record keeping and is not financial advice.
 
@@ -32,17 +32,18 @@ FinMind is the default data provider. Its `TaiwanStockInfo` and `TaiwanStockPric
 
 ## Accounting conventions
 
-All share quantities, TWD amounts, cached closes, cost-basis values, profits, and projection values are stored and calculated as whole integers. Provider values and legacy decimal data are rounded to the nearest integer using half-up rounding.
+All share quantities, TWD amounts, cached closes, profits, and projection values are stored and calculated as whole integers. Provider values and legacy decimal data are rounded to the nearest integer using half-up rounding.
 
-- A **buy** has positive shares and negative external cash. The cash flow equals the negative trade amount.
-- A **sell** has negative shares and positive external cash. The cash flow equals the trade amount.
-- A **paid-out dividend** has zero shares and positive income/external cash.
-- A **reinvested dividend** has positive acquired shares, dividend income, and total acquisition cost. A fully reinvested dividend has zero external cash flow. If income and purchase cost differ, enter the positive paid remainder or negative owner top-up as the external cash flow.
-- An **opening position** records reconciled shares with zero cash. Its optional total cost seeds moving-average basis; basis-dependent results are marked incomplete when that cost is omitted.
+- The transaction form asks for unsigned **Shares** and **Amount** values. The selected activity supplies the signs before the signed values are stored in the database.
+- A **buy** stores positive shares and a negative amount.
+- A **sell** stores negative shares and a positive amount.
+- A **paid-out dividend** stores zero shares and a positive amount. Paid-out dividends are included in the reported dividend-income total.
+- A **reinvested dividend** stores positive acquired shares and an amount of zero. It is an internal portfolio action and is not included in dividend-income totals.
+- An **opening position** stores positive shares and a negative amount representing the value invested when tracking begins.
 
-Holdings are derived by replaying transactions in date-and-ID order. Buys and reinvestments add acquisition cost; sells relieve the pre-sale moving-average cost. Corrections are soft deletes or edits with before/after audit records. Transactions that would make a holding negative at any later point are rejected.
+Holdings are derived by replaying transactions in date-and-ID order. Corrections are soft deletes or edits with before/after audit records. Transactions that would make a holding negative at any later point are rejected.
 
-XIRR measures owner-level external cash. It includes a terminal market-value flow on the valuation date, but excludes fully reinvested dividends because they are internal to the portfolio. A result is shown as **Not calculable** if prices are missing or cash flows lack both signs.
+Total assets are the current market value of holdings. Total profit is total assets plus the signed sum of transaction amounts. XIRR measures owner-level cash flows and includes a terminal market-value flow on the valuation date; zero-amount reinvestments are ignored because they are internal to the portfolio. A result is shown as **Not calculable** if prices are missing or cash flows lack both signs.
 
 ## Data, backup, and migration
 
@@ -54,7 +55,7 @@ The database and non-secret preferences are stored under:
 
 Back up `portfolio.sqlite3` while the application is closed. Price history is cached in the same database.
 
-The legacy importer accepts the original SQLite `log(id, stock_code, time, amount)` table. Before importing, it makes a timestamped copy beside the selected source (or in the requested backup directory). The import is content-fingerprinted and idempotent: choosing an unchanged source twice creates no duplicates. Legacy amounts remain owner cash flows in an **Imported portfolio**. Because the old data has no shares or cost information, reconcile each security with an opening position afterward. Legacy stock codes may need to be matched to current FinMind securities manually.
+The legacy importer accepts the original SQLite `log(id, stock_code, time, amount)` table. Before importing, it makes a timestamped copy beside the selected source (or in the requested backup directory). The import is content-fingerprinted and idempotent: choosing an unchanged source twice creates no duplicates. Legacy amounts remain signed owner cash amounts in an **Imported portfolio**. Because the old data has no shares, reconcile each security with an opening position afterward. Legacy stock codes may need to be matched to current FinMind securities manually. Legacy opening positions are migrated to negative amounts; an opening position with no known historical value uses zero and remains unavailable for reliable profit/IRR until corrected. Any historical owner top-up or payout attached to a reinvestment is preserved as a separate legacy cash-flow record.
 
 ## Scope
 

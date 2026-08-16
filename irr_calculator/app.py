@@ -35,7 +35,10 @@ def build_application(
         except (AttributeError, OSError):
             pass
     app = QApplication.instance() or QApplication(argv or sys.argv)
-    app.setApplicationName("IRR Calculator")
+    app.setApplicationName("Financial Hub")
+    # Keep the organization name stable: changing it can change Qt's settings
+    # namespace and break integrations that rely on the existing app identity.
+    # Keep the database storage path stable as well; see database.app_data_dir().
     app.setOrganizationName("IRRCalculator")
     icon = QIcon(str(application_icon_path()))
     app.setWindowIcon(icon)

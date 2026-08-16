@@ -67,8 +67,6 @@ class Security(Base):
 class Transaction(Base):
     __tablename__ = "transactions"
     __table_args__ = (
-        CheckConstraint("trade_amount >= 0", name="ck_transaction_trade_nonnegative"),
-        CheckConstraint("income_amount >= 0", name="ck_transaction_income_nonnegative"),
         Index("ix_transactions_portfolio_date", "portfolio_id", "trade_date", "id"),
         Index("ix_transactions_security_date", "security_id", "trade_date", "id"),
     )
@@ -80,9 +78,10 @@ class Transaction(Base):
     kind: Mapped[str] = mapped_column(String(32), nullable=False)
     trade_date: Mapped[date] = mapped_column(Date, nullable=False)
     shares_delta: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
-    external_cash_flow: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
-    trade_amount: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
-    income_amount: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    # Signed owner cash flow: buys are negative, sales/dividends positive.
+    # Reinvested dividends have amount zero because they never cross the
+    # portfolio boundary.  Opening positions use a negative deemed investment.
+    amount: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     source_key: Mapped[str | None] = mapped_column(String(200), unique=True)
     deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     created_at: Mapped[datetime] = mapped_column(

@@ -39,8 +39,7 @@ def test_money_and_transaction_history_render_whole_numbers():
     assert money(1234) == "NT$ 1,234"
 
     model = TransactionTableModel(
-        [(1, "2026-01-01", "Core", "2330", "BUY", 10, -1234, 0, "Active")]
+        [(1, "2026-01-01", "Core", "2330", "BUY", 10, -1234)]
     )
     assert model.index(0, 4).data(Qt.ItemDataRole.DisplayRole) == "10"
     assert model.index(0, 5).data(Qt.ItemDataRole.DisplayRole) == "-1,234"
-    assert model.index(0, 6).data(Qt.ItemDataRole.DisplayRole) == "0"

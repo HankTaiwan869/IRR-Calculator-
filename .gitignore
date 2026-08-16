@@ -20,3 +20,4 @@ investment.db
 load_csv_to_db.py
 *.db
 screenshot/
+.ruff_cache/

@@ -93,7 +93,7 @@ def import_legacy_database(
                 security_id=security.id,
                 kind=TransactionKind.LEGACY_CASH_FLOW,
                 trade_date=date.fromisoformat(str(when)[:10]),
-                external_cash_flow=_round_integer(amount),
+                amount=_round_integer(amount),
                 source_key=f"legacy:{fingerprint}:{row_id}",
             ),
         )
@@ -113,6 +113,10 @@ def reconcile_opening_position(
     shares: int,
     total_cost: int | None = None,
 ):
+    if total_cost is None or total_cost <= 0:
+        raise ValidationError(
+            "An opening position requires a positive initial or deemed investment."
+        )
     return create_transaction(
         session,
         TransactionInput(
@@ -121,6 +125,6 @@ def reconcile_opening_position(
             kind=TransactionKind.OPENING_POSITION,
             trade_date=as_of,
             shares_delta=shares,
-            trade_amount=total_cost or 0,
+            amount=-total_cost,
         ),
     )

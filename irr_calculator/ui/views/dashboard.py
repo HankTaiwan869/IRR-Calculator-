@@ -75,10 +75,9 @@ class DashboardView(QScrollArea):
         names = (
             "Total assets",
             "Total profit",
-            "Realized profit",
-            "Unrealized profit",
+            "Annual IRR",
+            "Monthly IRR",
             "Dividend income",
-            "Annual / monthly IRR",
         )
         self.cards = {name: MetricCard(name) for name in names}
         for index, card in enumerate(self.cards.values()):
@@ -119,12 +118,12 @@ class DashboardView(QScrollArea):
             )
         self.cards["Total assets"].value.setText(money(summary.total_assets))
         self.cards["Total profit"].value.setText(money(summary.total_profit))
-        self.cards["Realized profit"].value.setText(money(summary.realized_profit))
-        self.cards["Unrealized profit"].value.setText(money(summary.unrealized_profit))
         self.cards["Dividend income"].value.setText(money(summary.dividend_income))
-        irr = (
-            "Not calculable"
-            if summary.annual_irr is None
-            else f"{summary.annual_irr:.2%} / {summary.monthly_irr:.2%}"
+        annual_irr = (
+            "None" if summary.annual_irr is None else f"{summary.annual_irr:.2%}"
         )
-        self.cards["Annual / monthly IRR"].value.setText(irr)
+        monthly_irr = (
+            "None" if summary.monthly_irr is None else f"{summary.monthly_irr:.2%}"
+        )
+        self.cards["Annual IRR"].value.setText(annual_irr)
+        self.cards["Monthly IRR"].value.setText(monthly_irr)

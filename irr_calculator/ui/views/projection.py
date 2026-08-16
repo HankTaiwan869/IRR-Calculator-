@@ -6,6 +6,7 @@ from pathlib import Path
 from PyQt6.QtCore import Qt, QUrl
 from PyQt6.QtWebEngineWidgets import QWebEngineView
 from PyQt6.QtWidgets import (
+    QAbstractSpinBox,
     QComboBox,
     QDoubleSpinBox,
     QGridLayout,
@@ -42,6 +43,7 @@ class ProjectionView(QScrollArea):
         controls.addWidget(self.portfolio, 0, 1, 1, 3)
 
         self.years = QSpinBox()
+        self.years.setButtonSymbols(QAbstractSpinBox.ButtonSymbols.NoButtons)
         self.years.setRange(0, 100)
         self.years.setSingleStep(1)
         self.years.setValue(30)
@@ -56,6 +58,7 @@ class ProjectionView(QScrollArea):
             start=2,
         ):
             control = QDoubleSpinBox()
+            control.setButtonSymbols(QAbstractSpinBox.ButtonSymbols.NoButtons)
             control.setRange(-99.0, 100.0)
             control.setDecimals(2)
             control.setValue(value)
