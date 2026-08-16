@@ -1,6 +1,6 @@
-"""Development launcher. The installed command is ``irr-calculator``."""
+"""Development launcher. The installed command is ``financial-hub``."""
 
-from irr_calculator.app import main
+from financial_hub.app import main
 
 if __name__ == "__main__":
     raise SystemExit(main())

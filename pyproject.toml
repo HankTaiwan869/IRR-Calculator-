@@ -3,7 +3,7 @@ requires = ["hatchling>=1.27"]
 build-backend = "hatchling.build"
 
 [project]
-name = "irr-calculator"
+name = "financial-hub"
 version = "1.1.0"
 description = "Local desktop portfolio tracker for Taiwan securities"
 readme = "README.md"
@@ -26,10 +26,10 @@ dev = [
 ]
 
 [project.scripts]
-irr-calculator = "irr_calculator.app:main"
+financial-hub = "financial_hub.app:main"
 
 [tool.hatch.build.targets.wheel]
-packages = ["irr_calculator"]
+packages = ["financial_hub"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

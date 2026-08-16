@@ -1,9 +1,9 @@
 from PyQt6.QtCore import Qt
 from PyQt6.QtWidgets import QPushButton, QVBoxLayout, QWidget
 
-from irr_calculator.ui.models import TransactionTableModel
-from irr_calculator.ui.theme import COLORS, stylesheet
-from irr_calculator.ui.views.dashboard import money
+from financial_hub.ui.models import TransactionTableModel
+from financial_hub.ui.theme import COLORS, stylesheet
+from financial_hub.ui.views.dashboard import money
 
 
 def test_sidebar_navigation_rule_overrides_generic_button_rule():

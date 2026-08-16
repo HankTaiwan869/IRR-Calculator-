@@ -5,12 +5,12 @@ import pytest
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 
-from irr_calculator.database import (
+from financial_hub.database import (
     create_database_engine,
     initialize_database,
     session_factory,
 )
-from irr_calculator.models import (
+from financial_hub.models import (
     Portfolio,
     Quote,
     SchemaMeta,

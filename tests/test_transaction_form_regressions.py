@@ -1,9 +1,9 @@
 from PyQt6.QtCore import QDate
 from PyQt6.QtWidgets import QAbstractSpinBox, QLabel, QLineEdit, QMessageBox
 
-from irr_calculator.models import Security, Transaction, TransactionKind
-from irr_calculator.ui.dialogs.transaction import TransactionDialog
-from irr_calculator.ui.views.transactions import TransactionsView
+from financial_hub.models import Security, Transaction, TransactionKind
+from financial_hub.ui.dialogs.transaction import TransactionDialog
+from financial_hub.ui.views.transactions import TransactionsView
 
 
 def test_create_form_uses_unsigned_values_and_activity_signs(qtbot, db, monkeypatch):
@@ -13,7 +13,7 @@ def test_create_form_uses_unsigned_values_and_activity_signs(qtbot, db, monkeypa
 
     captured = []
     monkeypatch.setattr(
-        "irr_calculator.ui.views.transactions.create_transaction",
+        "financial_hub.ui.views.transactions.create_transaction",
         lambda _session, data: captured.append(data),
     )
     monkeypatch.setattr(QMessageBox, "information", lambda *_args: None)
@@ -88,7 +88,7 @@ def test_security_is_plain_text_and_resolves_exactly_on_save(qtbot, db, monkeypa
     captured = []
     warnings = []
     monkeypatch.setattr(
-        "irr_calculator.ui.views.transactions.create_transaction",
+        "financial_hub.ui.views.transactions.create_transaction",
         lambda _session, data: captured.append(data),
     )
     monkeypatch.setattr(QMessageBox, "information", lambda *_args: None)

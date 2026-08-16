@@ -3,9 +3,9 @@ from datetime import date
 import pytest
 from sqlalchemy import select
 
-from irr_calculator.exceptions import ValidationError
-from irr_calculator.models import Transaction, TransactionAudit, TransactionKind
-from irr_calculator.services.transactions import (
+from financial_hub.exceptions import ValidationError
+from financial_hub.models import Transaction, TransactionAudit, TransactionKind
+from financial_hub.services.transactions import (
     TransactionInput,
     create_transaction,
     delete_transaction,

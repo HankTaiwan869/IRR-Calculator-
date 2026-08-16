@@ -1,6 +1,6 @@
-# IRR Calculator
+# Financial Hub
 
-IRR Calculator is a local, English-language PyQt6 desktop application for tracking Taiwan securities in TWD. It keeps named portfolios, activity-aware transactions, delayed daily prices, owner cash flows, total profit, dividend income, XIRR, and 30-year projections in a local SQLite database.
+Financial Hub is a local, English-language PyQt6 desktop application for tracking Taiwan securities in TWD. It keeps named portfolios, activity-aware transactions, delayed daily prices, owner cash flows, total profit, dividend income, XIRR, and 30-year projections in a local SQLite database.
 
 The application is for personal record keeping and is not financial advice.
 
@@ -10,7 +10,7 @@ Python 3.11 or newer and [uv](https://docs.astral.sh/uv/) are required.
 
 ```powershell
 uv sync --dev
-uv run irr-calculator
+uv run financial-hub
 ```
 
 For a development launch, `uv run python main.py` is equivalent. Run the test suite with:

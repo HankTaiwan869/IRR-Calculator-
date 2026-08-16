@@ -3,8 +3,8 @@ from datetime import date
 import httpx
 import pytest
 
-from irr_calculator.exceptions import ProviderError, RateLimitError
-from irr_calculator.providers.finmind import FinMindProvider
+from financial_hub.exceptions import ProviderError, RateLimitError
+from financial_hub.providers.finmind import FinMindProvider
 
 
 def test_finmind_parses_latest_positive_quote():

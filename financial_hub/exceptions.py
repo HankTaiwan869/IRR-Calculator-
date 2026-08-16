@@ -1,12 +1,12 @@
-class IRRCalculatorError(Exception):
+class FinancialHubError(Exception):
     """Base exception safe to display in the desktop application."""
 
 
-class ValidationError(IRRCalculatorError):
+class ValidationError(FinancialHubError):
     pass
 
 
-class ProviderError(IRRCalculatorError):
+class ProviderError(FinancialHubError):
     pass
 
 

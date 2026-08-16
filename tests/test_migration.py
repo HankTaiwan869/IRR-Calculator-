@@ -2,12 +2,12 @@ import sqlite3
 
 from sqlalchemy import func, select
 
-from irr_calculator.legacy_import import (
+from financial_hub.legacy_import import (
     import_legacy_database,
     reconcile_opening_position,
 )
-from irr_calculator.models import ImportRun, Portfolio, Transaction
-from irr_calculator.services.ledger import replay_ledger
+from financial_hub.models import ImportRun, Portfolio, Transaction
+from financial_hub.services.ledger import replay_ledger
 
 
 def test_legacy_import_is_idempotent_and_reconcilable(db, tmp_path):

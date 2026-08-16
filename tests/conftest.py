@@ -2,12 +2,12 @@ from __future__ import annotations
 
 import pytest
 
-from irr_calculator.database import (
+from financial_hub.database import (
     create_database_engine,
     initialize_database,
     session_factory,
 )
-from irr_calculator.models import Portfolio, Security
+from financial_hub.models import Portfolio, Security
 
 
 @pytest.fixture

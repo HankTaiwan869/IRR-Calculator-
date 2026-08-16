@@ -1,6 +1,6 @@
 from sqlalchemy import inspect
 
-from irr_calculator.database import backup_database, create_database_engine
+from financial_hub.database import backup_database, create_database_engine
 
 
 def test_online_sqlite_backup_contains_schema(db, tmp_path):

@@ -3,7 +3,7 @@ from itertools import pairwise
 from PyQt6.QtCore import Qt
 from PyQt6.QtWidgets import QAbstractSpinBox, QFormLayout, QGroupBox
 
-from irr_calculator.ui.main_window import MainWindow
+from financial_hub.ui.main_window import MainWindow
 
 
 def test_projection_is_separate_from_dashboard_and_years_accept_zero(qtbot, db):

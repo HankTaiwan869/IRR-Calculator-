@@ -1,8 +1,8 @@
 from PyQt6.QtCore import Qt, QTimer
 from PyQt6.QtGui import QIcon
 
-from irr_calculator.app import application_icon_path
-from irr_calculator.ui.main_window import MainWindow
+from financial_hub.app import application_icon_path
+from financial_hub.ui.main_window import MainWindow
 
 
 def test_main_window_navigation_and_deferred_plotly_chart(qtbot, db):
@@ -38,7 +38,7 @@ def test_main_window_navigation_and_deferred_plotly_chart(qtbot, db):
 
 
 def test_transaction_table_model():
-    from irr_calculator.ui.models import TransactionTableModel
+    from financial_hub.ui.models import TransactionTableModel
 
     model = TransactionTableModel(
         [(42, "2025-01-01", "Core", "2330", "BUY", 10, -100)]

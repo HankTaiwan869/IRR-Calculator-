@@ -7,19 +7,19 @@ from PyQt6.QtTest import QSignalSpy
 from PyQt6.QtWidgets import QDialog, QMessageBox
 from sqlalchemy import func, select
 
-from irr_calculator import __version__
-from irr_calculator.exceptions import ValidationError
-from irr_calculator.models import (
+from financial_hub import __version__
+from financial_hub.exceptions import ValidationError
+from financial_hub.models import (
     Portfolio,
     Quote,
     Transaction,
     TransactionAudit,
     TransactionKind,
 )
-from irr_calculator.services.transactions import TransactionInput
-from irr_calculator.ui.main_window import MainWindow
-from irr_calculator.ui.models import TransactionTableModel
-from irr_calculator.ui.table_selection import (
+from financial_hub.services.transactions import TransactionInput
+from financial_hub.ui.main_window import MainWindow
+from financial_hub.ui.models import TransactionTableModel
+from financial_hub.ui.table_selection import (
     SelectionIndicatorHeader,
     UnhighlightedSelectionDelegate,
 )
@@ -54,7 +54,7 @@ def test_portfolio_changes_refresh_dependent_selectors(qtbot, db, monkeypatch):
     qtbot.addWidget(window)
     _AcceptedPortfolioDialog.portfolio_name = "Growth"
     monkeypatch.setattr(
-        "irr_calculator.ui.views.portfolios.PortfolioDialog",
+        "financial_hub.ui.views.portfolios.PortfolioDialog",
         _AcceptedPortfolioDialog,
     )
     monkeypatch.setattr(
@@ -169,7 +169,7 @@ def test_failed_portfolio_create_does_not_emit_change(qtbot, db, monkeypatch):
     qtbot.addWidget(window)
     _AcceptedPortfolioDialog.portfolio_name = "Core"
     monkeypatch.setattr(
-        "irr_calculator.ui.views.portfolios.PortfolioDialog",
+        "financial_hub.ui.views.portfolios.PortfolioDialog",
         _AcceptedPortfolioDialog,
     )
     monkeypatch.setattr(QMessageBox, "warning", lambda *_args: None)
@@ -274,7 +274,7 @@ def test_history_edit_emits_only_after_success(qtbot, db, monkeypatch):
     window = MainWindow(factory)
     qtbot.addWidget(window)
     monkeypatch.setattr(
-        "irr_calculator.ui.views.history.TransactionDialog",
+        "financial_hub.ui.views.history.TransactionDialog",
         AcceptedTransactionDialog,
     )
     changes = QSignalSpy(window.history.data_changed)
@@ -289,7 +289,7 @@ def test_history_edit_emits_only_after_success(qtbot, db, monkeypatch):
         assert edited.amount == -120
 
     monkeypatch.setattr(
-        "irr_calculator.ui.views.history.edit_transaction",
+        "financial_hub.ui.views.history.edit_transaction",
         lambda *_args: (_ for _ in ()).throw(ValidationError("bad")),
     )
     monkeypatch.setattr(QMessageBox, "warning", lambda *_args: None)

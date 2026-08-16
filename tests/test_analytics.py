@@ -1,12 +1,12 @@
 from datetime import date
 
-from irr_calculator.models import Portfolio, Quote, Transaction, TransactionKind
-from irr_calculator.services.analytics import (
+from financial_hub.models import Portfolio, Quote, Transaction, TransactionKind
+from financial_hub.services.analytics import (
     calculate_xirr,
     portfolio_summary,
     projection,
 )
-from irr_calculator.services.transactions import TransactionInput, create_transaction
+from financial_hub.services.transactions import TransactionInput, create_transaction
 
 
 def test_reinvested_dividend_updates_shares_but_not_cash_or_dividend_total(db):

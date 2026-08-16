@@ -2,10 +2,10 @@ from datetime import date
 
 from sqlalchemy import select
 
-from irr_calculator.models import Portfolio, Quote, Security, TransactionKind
-from irr_calculator.providers.base import DailyQuote
-from irr_calculator.services.quotes import refresh_prices
-from irr_calculator.services.transactions import TransactionInput, create_transaction
+from financial_hub.models import Portfolio, Quote, Security, TransactionKind
+from financial_hub.providers.base import DailyQuote
+from financial_hub.services.quotes import refresh_prices
+from financial_hub.services.transactions import TransactionInput, create_transaction
 
 
 class FakeProvider:
