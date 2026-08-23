@@ -17,7 +17,6 @@ from .database import (
     session_factory,
 )
 from .exceptions import FinancialHubError
-from .legacy_import import import_legacy_database
 from .models import Security
 from .preferences import get_finmind_token
 from .providers import FinMindProvider
@@ -32,24 +31,16 @@ def application_icon_path() -> Path:
     return Path(__file__).resolve().parent / "assets" / "investment.ico"
 
 
-def legacy_database_path() -> Path:
-    """Return the repository's fixed one-time legacy source."""
-    return Path(__file__).resolve().parents[1] / "legacy-investment.db"
-
-
-def bootstrap_new_database(factory, source: Path | None = None) -> None:
-    """Populate FinMind securities, then link the bundled legacy transactions."""
+def bootstrap_new_database(factory) -> None:
+    """Populate the FinMind security master for a new database."""
     try:
         token = get_finmind_token()
     except Exception:  # noqa: BLE001 - an unavailable credential backend is optional
         token = ""
     provider = FinMindProvider(token)
 
-    legacy_path = source or legacy_database_path()
     with factory.begin() as session:
         sync_security_master(session, provider)
-        if legacy_path.is_file():
-            import_legacy_database(session, legacy_path)
 
 
 def build_application(

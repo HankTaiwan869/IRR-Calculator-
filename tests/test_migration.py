@@ -1,10 +1,14 @@
 import sqlite3
+from datetime import date
 
+import pytest
+from openpyxl import Workbook
 from sqlalchemy import select
 
 from financial_hub import app as app_module
 from financial_hub.app import bootstrap_new_database
-from financial_hub.legacy_import import import_legacy_database
+from financial_hub.data_import import import_transactions
+from financial_hub.exceptions import ValidationError
 from financial_hub.models import Portfolio, Security, Transaction
 from financial_hub.providers.base import SecurityInfo
 
@@ -37,16 +41,12 @@ def _legacy_source(path):
         )
 
 
-def test_bootstrap_syncs_finmind_before_importing_legacy(
-    db, tmp_path, monkeypatch
-):
+def test_bootstrap_syncs_finmind_without_importing_a_legacy_file(db, monkeypatch):
     _engine, factory, _ids = db
-    source = tmp_path / "legacy.db"
-    _legacy_source(source)
 
     monkeypatch.setattr(app_module, "get_finmind_token", lambda: "token")
     monkeypatch.setattr(app_module, "FinMindProvider", lambda _token: FinMindMaster())
-    bootstrap_new_database(factory, source)
+    bootstrap_new_database(factory)
 
     with factory() as session:
         security = session.scalar(
@@ -63,24 +63,12 @@ def test_bootstrap_syncs_finmind_before_importing_legacy(
         assert securities[0].exchange == "twse"
         assert securities[0].security_type == "etf"
 
-        imported = session.scalar(
+        assert session.scalar(
             select(Portfolio).where(Portfolio.name == "Imported portfolio")
-        )
-        assert imported is not None
-        rows = list(
-            session.scalars(
-                select(Transaction)
-                .where(Transaction.portfolio_id == imported.id)
-                .order_by(Transaction.id)
-            )
-        )
-        assert len(rows) == 2
-        assert [row.security_id for row in rows] == [security_id, security_id]
-        # Transaction amounts remain whole TWD; only quote prices are decimal.
-        assert [row.amount for row in rows] == [-101, 6]
+        ) is None
 
 
-def test_legacy_import_does_not_create_legacy_security_duplicates(db, tmp_path):
+def test_sqlite_import_does_not_create_security_duplicates(db, tmp_path):
     _engine, factory, _ids = db
     source = tmp_path / "legacy.db"
     _legacy_source(source)
@@ -96,9 +84,54 @@ def test_legacy_import_does_not_create_legacy_security_duplicates(db, tmp_path):
         )
 
     with factory.begin() as session:
-        import_legacy_database(session, source)
+        result = import_transactions(session, source)
+
+    assert result.imported_rows == 2
 
     with factory() as session:
         assert session.scalar(
             select(Security.id).where(Security.symbol == "00692")
         ) is not None
+
+
+def test_excel_import_uses_the_same_transaction_pipeline(db, tmp_path):
+    _engine, factory, _ids = db
+    source = tmp_path / "cash-flows.xlsx"
+    workbook = Workbook()
+    sheet = workbook.active
+    sheet.append(("id", "stock_code", "date", "amount"))
+    sheet.append((1, "2330", date(2024, 1, 1), -100.5))
+    sheet.append((2, "2330", "2024-06-01", 5.5))
+    workbook.save(source)
+
+    with factory.begin() as session:
+        result = import_transactions(session, source)
+
+    assert result.imported_rows == 2
+    with factory() as session:
+        portfolio = session.scalar(
+            select(Portfolio).where(Portfolio.name == "Imported portfolio")
+        )
+        assert portfolio is not None
+        rows = list(
+            session.scalars(
+                select(Transaction)
+                .where(Transaction.portfolio_id == portfolio.id)
+                .order_by(Transaction.id)
+            )
+        )
+        assert [row.amount for row in rows] == [-101, 6]
+
+
+def test_excel_import_requires_its_hard_coded_schema(db, tmp_path):
+    _engine, factory, _ids = db
+    source = tmp_path / "cash-flows.xlsx"
+    workbook = Workbook()
+    workbook.active.append(("id", "stock_code", "amount"))
+    workbook.save(source)
+
+    with (
+        factory.begin() as session,
+        pytest.raises(ValidationError, match="missing required columns: date"),
+    ):
+        import_transactions(session, source)

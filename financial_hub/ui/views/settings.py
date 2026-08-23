@@ -16,6 +16,7 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 
+from ...data_import import import_transactions
 from ...database import backup_database
 from ...preferences import save_finmind_token
 from ...providers import FinMindProvider
@@ -59,7 +60,9 @@ class SettingsView(QWidget):
 
         backup = QGroupBox("Database")
         backup_layout = QVBoxLayout(backup)
+        import_button = QPushButton("Import from Excel/SQLite")
         backup_button = QPushButton("Back Up Database…")
+        backup_layout.addWidget(import_button, alignment=Qt.AlignmentFlag.AlignLeft)
         backup_layout.addWidget(backup_button, alignment=Qt.AlignmentFlag.AlignLeft)
         layout.addWidget(backup)
         layout.addStretch()
@@ -67,6 +70,7 @@ class SettingsView(QWidget):
         test.clicked.connect(self.test_token)
         sync.clicked.connect(self.sync_master)
         backup_button.clicked.connect(self.backup_database)
+        import_button.clicked.connect(self.import_file)
 
     def save_token(self) -> None:
         try:
@@ -158,3 +162,25 @@ class SettingsView(QWidget):
             )
         except Exception as error:  # noqa: BLE001 - filesystem boundary
             QMessageBox.warning(self, "Database backup", str(error))
+
+    def import_file(self) -> None:
+        filename, _ = QFileDialog.getOpenFileName(
+            self,
+            "Import cash flows",
+            "",
+            "Supported files (*.xlsx *.db *.sqlite *.sqlite3);;"
+            "Excel workbook (*.xlsx);;SQLite database (*.db *.sqlite *.sqlite3)",
+        )
+        if not filename:
+            return
+        try:
+            with self.factory.begin() as session:
+                result = import_transactions(session, filename)
+            QMessageBox.information(
+                self,
+                "Import complete",
+                f"Imported {result.imported_rows} cash-flow rows.",
+            )
+            self.data_changed.emit()
+        except Exception as error:  # noqa: BLE001 - import boundary
+            QMessageBox.warning(self, "Import failed", str(error))
