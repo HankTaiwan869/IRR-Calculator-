@@ -9,6 +9,7 @@ from PyQt6.QtWidgets import QApplication
 from sqlalchemy import select
 
 from . import __version__
+from .credentials import get_finmind_token
 from .database import (
     create_database_engine,
     default_database_path,
@@ -18,7 +19,6 @@ from .database import (
 )
 from .exceptions import FinancialHubError
 from .models import Security
-from .preferences import get_finmind_token
 from .providers import FinMindProvider
 from .services.quotes import sync_security_master
 from .ui.main_window import MainWindow

@@ -16,7 +16,7 @@ from PyQt6.QtWidgets import (
 )
 
 from .. import __version__
-from ..preferences import get_finmind_token
+from ..credentials import get_finmind_token
 from ..providers import FinMindProvider
 from ..services.quotes import refresh_prices
 from .views import (

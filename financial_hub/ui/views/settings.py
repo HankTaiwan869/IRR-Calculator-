@@ -16,9 +16,9 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 
+from ...credentials import save_finmind_token
 from ...data_import import import_transactions
 from ...database import backup_database
-from ...preferences import save_finmind_token
 from ...providers import FinMindProvider
 from ...services.quotes import sync_security_master
 from ..workers import FunctionWorker
@@ -88,7 +88,7 @@ class SettingsView(QWidget):
         token = self.token.text().strip()
         if token:
             return token
-        from ...preferences import get_finmind_token
+        from ...credentials import get_finmind_token
 
         try:
             return get_finmind_token()
