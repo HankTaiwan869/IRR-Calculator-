@@ -150,7 +150,7 @@ class TransactionsView(QScrollArea):
             security_id = session.scalar(
                 select(Security.id)
                 .where(Security.symbol == symbol, Security.active.is_(True))
-                .order_by((Security.provider == "FinMind").desc(), Security.id)
+                .order_by(Security.id)
                 .limit(1)
             )
         if security_id is None:

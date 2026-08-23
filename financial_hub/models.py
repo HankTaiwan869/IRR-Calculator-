@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from datetime import date, datetime
+from decimal import Decimal
 from enum import StrEnum
 
 from sqlalchemy import (
@@ -10,8 +11,8 @@ from sqlalchemy import (
     ForeignKey,
     Index,
     Integer,
+    Numeric,
     String,
-    Text,
     UniqueConstraint,
     func,
 )
@@ -48,10 +49,9 @@ class Portfolio(Base):
 class Security(Base):
     __tablename__ = "securities"
     __table_args__ = (
-        UniqueConstraint("provider", "symbol", name="uq_security_provider_symbol"),
+        UniqueConstraint("symbol", name="uq_security_symbol"),
     )
     id: Mapped[int] = mapped_column(primary_key=True)
-    provider: Mapped[str] = mapped_column(String(40), default="FinMind", nullable=False)
     symbol: Mapped[str] = mapped_column(String(32), nullable=False)
     name_zh: Mapped[str] = mapped_column(String(160), default="", nullable=False)
     exchange: Mapped[str] = mapped_column(String(32), default="", nullable=False)
@@ -80,7 +80,6 @@ class Transaction(Base):
     # Reinvested dividends have amount zero because they never cross the
     # portfolio boundary.  Opening positions use a negative deemed investment.
     amount: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
-    source_key: Mapped[str | None] = mapped_column(String(200), unique=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()
     )
@@ -95,7 +94,7 @@ class Quote(Base):
     __tablename__ = "quotes"
     __table_args__ = (
         UniqueConstraint(
-            "security_id", "provider", "market_date", name="uq_quote_security_day"
+            "security_id", "market_date", name="uq_quote_security_day"
         ),
         CheckConstraint("close > 0", name="ck_quote_positive"),
         Index("ix_quotes_security_date", "security_id", "market_date"),
@@ -104,28 +103,10 @@ class Quote(Base):
     security_id: Mapped[int] = mapped_column(
         ForeignKey("securities.id"), nullable=False
     )
-    provider: Mapped[str] = mapped_column(String(40), default="FinMind", nullable=False)
     market_date: Mapped[date] = mapped_column(Date, nullable=False)
     refresh_cycle_date: Mapped[date] = mapped_column(Date, nullable=False)
-    close: Mapped[int] = mapped_column(Integer, nullable=False)
+    close: Mapped[Decimal] = mapped_column(Numeric(12, 2), nullable=False)
     fetched_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()
     )
     security: Mapped[Security] = relationship()
-
-
-class SchemaMeta(Base):
-    __tablename__ = "schema_meta"
-    key: Mapped[str] = mapped_column(String(80), primary_key=True)
-    value: Mapped[str] = mapped_column(String(240), nullable=False)
-
-
-class ImportRun(Base):
-    __tablename__ = "import_runs"
-    id: Mapped[int] = mapped_column(primary_key=True)
-    fingerprint: Mapped[str] = mapped_column(String(64), nullable=False, unique=True)
-    source_path: Mapped[str] = mapped_column(Text, nullable=False)
-    imported_rows: Mapped[int] = mapped_column(Integer, nullable=False)
-    created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), server_default=func.now()
-    )

@@ -1,4 +1,5 @@
 from datetime import date
+from decimal import Decimal
 
 from financial_hub.models import Portfolio, Quote, Transaction, TransactionKind
 from financial_hub.services.analytics import (
@@ -95,13 +96,18 @@ def test_paid_out_dividend_is_counted_once_in_profit_and_income(db):
     assert summary.total_profit == 35
 
 
-def test_amounts_are_integers_and_total_profit_uses_signed_sum(db):
+def test_decimal_quote_values_are_preserved_in_market_value_and_profit(db):
     _engine, factory, (portfolio_id, security_id) = db
     with factory.begin() as session:
         create_transaction(
             session,
             TransactionInput(
-                portfolio_id, security_id, TransactionKind.BUY, date(2024, 1, 1), 2, -1
+                portfolio_id,
+                security_id,
+                TransactionKind.BUY,
+                date(2024, 1, 1),
+                2,
+                -1,
             ),
         )
         session.add(
@@ -109,15 +115,15 @@ def test_amounts_are_integers_and_total_profit_uses_signed_sum(db):
                 security_id=security_id,
                 market_date=date(2024, 1, 2),
                 refresh_cycle_date=date(2024, 1, 2),
-                close=2,
+                close=Decimal("2.35"),
             )
         )
     with factory() as session:
         summary = portfolio_summary(session, date(2024, 1, 2), portfolio_id)
-    assert summary.total_assets == 4
-    assert summary.total_profit == 3
-    assert type(summary.total_assets) is int
-    assert type(summary.total_profit) is int
+    assert summary.total_assets == Decimal("4.70")
+    assert summary.total_profit == Decimal("3.70")
+    assert type(summary.total_assets) is Decimal
+    assert type(summary.total_profit) is Decimal
 
 
 def test_xirr_not_calculable_without_sign_change():
@@ -129,6 +135,25 @@ def test_xirr_not_calculable_without_sign_change():
         portfolio_id=1,
     )
     assert calculate_xirr([row], 5, date(2025, 1, 1)) is None
+
+
+def test_xirr_receives_fractional_terminal_value_at_library_boundary(monkeypatch):
+    row = Transaction(
+        kind=TransactionKind.BUY,
+        trade_date=date(2024, 1, 1),
+        amount=-100,
+        shares_delta=1,
+        portfolio_id=1,
+    )
+    seen = {}
+
+    def fake_xirr(dates, values):
+        seen["values"] = values
+        return 0.1234
+
+    monkeypatch.setattr("financial_hub.services.analytics.xirr", fake_xirr)
+    assert calculate_xirr([row], Decimal("100.55"), date(2025, 1, 1)) == 0.1234
+    assert seen["values"][-1] == 100.55
 
 
 def test_all_portfolios_replays_separate_ledgers_before_aggregating(db):
@@ -318,7 +343,7 @@ def test_all_portfolios_excludes_archived_but_explicit_selection_still_works(db)
     assert archived_only.total_assets == 900
 
 
-def test_projection_outputs_are_integers_with_half_up_rounding():
-    values = projection(1, years=1, rates=(0.5,))
-    assert values == ((1, 2),)
-    assert all(type(value) is int for row in values for value in row)
+def test_projection_preserves_decimal_calculations_until_display():
+    values = projection(Decimal("1.25"), years=1, rates=(0.5,))
+    assert values == ((Decimal("1.25"), Decimal("1.875")),)
+    assert all(type(value) is Decimal for row in values for value in row)

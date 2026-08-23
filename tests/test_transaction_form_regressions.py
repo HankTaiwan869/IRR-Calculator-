@@ -68,7 +68,6 @@ def test_security_is_plain_text_and_resolves_exactly_on_save(qtbot, db, monkeypa
     _engine, factory, _ids = db
     with factory.begin() as session:
         security = Security(
-            provider="FinMind",
             symbol="00692",
             name_zh="富邦公司治理",
             exchange="twse",

@@ -20,14 +20,16 @@ class RefreshResult:
     failed: tuple[tuple[str, str], ...]
 
 
-def _integer_close(value: object) -> int:
+def _decimal_close(value: object) -> Decimal:
     try:
-        close = int(Decimal(str(value)).quantize(Decimal(1), rounding=ROUND_HALF_UP))
+        close = Decimal(str(value)).quantize(
+            Decimal("0.01"), rounding=ROUND_HALF_UP
+        )
     except (InvalidOperation, ValueError, TypeError) as error:
         raise ProviderError(
             "The quote provider returned a malformed closing price."
         ) from error
-    if close <= 0:
+    if not close.is_finite() or close <= 0:
         raise ProviderError("The quote provider returned a non-positive closing price.")
     return close
 
@@ -38,7 +40,6 @@ def sync_security_master(session: Session, provider: SecuritiesProvider) -> int:
         statement = (
             insert(Security)
             .values(
-                provider=provider.name,
                 symbol=item.symbol,
                 name_zh=item.name_zh,
                 exchange=item.exchange,
@@ -46,7 +47,7 @@ def sync_security_master(session: Session, provider: SecuritiesProvider) -> int:
                 active=True,
             )
             .on_conflict_do_update(
-                index_elements=[Security.provider, Security.symbol],
+                index_elements=[Security.symbol],
                 set_={
                     "name_zh": item.name_zh,
                     "exchange": item.exchange,
@@ -86,7 +87,6 @@ def refresh_prices(
             if not retry and session.scalar(
                 select(Quote.id).where(
                     Quote.security_id == security.id,
-                    Quote.provider == provider.name,
                     Quote.refresh_cycle_date == cycle_date,
                 )
             ):
@@ -96,13 +96,12 @@ def refresh_prices(
             quote = provider.latest_quote(
                 security.symbol, cycle_date - timedelta(days=10)
             )
-            close = _integer_close(quote.close)
+            close = _decimal_close(quote.close)
             with factory.begin() as session:
                 statement = (
                     insert(Quote)
                     .values(
                         security_id=security.id,
-                        provider=provider.name,
                         market_date=quote.market_date,
                         refresh_cycle_date=cycle_date,
                         close=close,
@@ -110,7 +109,6 @@ def refresh_prices(
                     .on_conflict_do_update(
                         index_elements=[
                             Quote.security_id,
-                            Quote.provider,
                             Quote.market_date,
                         ],
                         set_={"close": close, "refresh_cycle_date": cycle_date},

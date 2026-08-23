@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from datetime import datetime
+from decimal import ROUND_HALF_UP, Decimal
 
 from PyQt6.QtCore import Qt, pyqtSignal
 from PyQt6.QtWidgets import (
@@ -20,8 +21,11 @@ from ...models import Portfolio
 from ...services.analytics import portfolio_summary
 
 
-def money(value: int | None) -> str:
-    return "Not calculable" if value is None else f"NT$ {value:,}"
+def money(value: Decimal | int | None) -> str:
+    if value is None:
+        return "Not calculable"
+    rounded = Decimal(str(value)).quantize(Decimal(1), rounding=ROUND_HALF_UP)
+    return f"NT$ {rounded:,}"
 
 
 class MetricCard(QFrame):

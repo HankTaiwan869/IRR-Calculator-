@@ -7,9 +7,9 @@ from pathlib import Path
 from sqlalchemy import Engine, create_engine, event, inspect, select
 from sqlalchemy.orm import Session, sessionmaker
 
-from .models import Base, Portfolio, SchemaMeta
+from .models import Base, Portfolio
 
-SCHEMA_VERSION = "4"
+SCHEMA_VERSION = 1
 
 
 def app_data_dir() -> Path:
@@ -20,7 +20,9 @@ def app_data_dir() -> Path:
 
 
 def default_database_path() -> Path:
-    return app_data_dir() / "portfolio.sqlite3"
+    # v1 intentionally uses a new filename.  The previous application
+    # database is left untouched and is never interpreted as this schema.
+    return app_data_dir() / "financial-hub.sqlite3"
 
 
 def create_database_engine(path: Path | str | None = None) -> Engine:
@@ -37,24 +39,41 @@ def create_database_engine(path: Path | str | None = None) -> Engine:
     return engine
 
 
-def initialize_database(engine: Engine) -> None:
-    """Create a new v4 database, or verify an existing database is v4."""
-    if inspect(engine).has_table("schema_meta"):
-        with Session(engine) as session:
-            current = session.get(SchemaMeta, "schema_version")
-        if current is None or current.value != SCHEMA_VERSION:
-            actual = current.value if current is not None else "missing"
-            raise RuntimeError(
-                f"Unsupported database schema {actual}; this app supports schema "
-                f"{SCHEMA_VERSION} only. Use a v4 database or create a new one."
-            )
+def initialize_database(engine: Engine) -> bool:
+    """Create or validate the deliberately single-version v1 schema.
 
-    Base.metadata.create_all(engine)
-    with Session(engine) as session:
-        current = session.get(SchemaMeta, "schema_version")
-        if current is None:
-            session.add(SchemaMeta(key="schema_version", value=SCHEMA_VERSION))
-            session.commit()
+    A database with no user tables and ``PRAGMA user_version = 0`` is a fresh
+    database and is initialized in place.  Any populated database that is not
+    already the exact v1 shape is rejected; there is intentionally no
+    migration or compatibility path in this application.
+
+    Returns ``True`` when a new schema was created.  The return value lets the
+    application run its one-time FinMind/legacy bootstrap without making
+    isolated database tests perform network access.
+    """
+    current = _schema_user_version(engine)
+    tables = set(inspect(engine).get_table_names())
+    expected = set(Base.metadata.tables)
+
+    if current == 0 and not tables:
+        Base.metadata.create_all(engine)
+        with engine.begin() as connection:
+            connection.exec_driver_sql(f"PRAGMA user_version = {SCHEMA_VERSION}")
+        return True
+
+    if current != SCHEMA_VERSION or tables != expected:
+        actual = current if current else "0 (unversioned)"
+        raise RuntimeError(
+            f"Unsupported database schema {actual}; this app supports schema "
+            f"{SCHEMA_VERSION} only. Create a new database."
+        )
+    return False
+
+
+def _schema_user_version(engine: Engine) -> int:
+    with engine.connect() as connection:
+        value = connection.exec_driver_sql("PRAGMA user_version").scalar_one()
+    return int(value)
 
 
 def session_factory(engine: Engine) -> sessionmaker[Session]:

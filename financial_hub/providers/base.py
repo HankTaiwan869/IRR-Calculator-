@@ -3,6 +3,7 @@ from __future__ import annotations
 from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import date
+from decimal import Decimal
 from typing import Protocol
 
 
@@ -18,7 +19,7 @@ class SecurityInfo:
 class DailyQuote:
     symbol: str
     market_date: date
-    close: int
+    close: Decimal
 
 
 class SecuritiesProvider(Protocol):

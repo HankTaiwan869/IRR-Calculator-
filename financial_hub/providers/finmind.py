@@ -94,9 +94,10 @@ class FinMindProvider:
         for item in reversed(records):
             try:
                 raw_close = Decimal(str(item["close"]))
-                close = raw_close.quantize(Decimal("1.00"), rounding=ROUND_HALF_UP)
-                print(close)
+                close = raw_close.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
                 market_date = date.fromisoformat(str(item["date"])[:10])
+                if not close.is_finite():
+                    raise InvalidOperation
             except (KeyError, ValueError, InvalidOperation, TypeError) as error:
                 raise ProviderError(
                     f"FinMind returned a malformed quote for {symbol}."

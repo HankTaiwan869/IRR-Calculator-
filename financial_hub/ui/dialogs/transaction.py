@@ -146,7 +146,6 @@ class TransactionDialog(QDialog):
                     trade_date=date(qdate.year(), qdate.month(), qdate.day()),
                     shares_delta=shares,
                     amount=amount,
-                    source_key=self.transaction.source_key,
                 )
             )
         except ValidationError as error:

@@ -21,7 +21,6 @@ class TransactionInput:
     trade_date: date
     shares_delta: int = ZERO
     amount: int = ZERO
-    source_key: str | None = None
 
 
 def _integer(value: Decimal | str | float, field: str) -> int:
@@ -46,7 +45,6 @@ def normalized(data: TransactionInput) -> TransactionInput:
         trade_date=data.trade_date,
         shares_delta=_integer(data.shares_delta, "Shares"),
         amount=_integer(data.amount, "Amount"),
-        source_key=data.source_key,
     )
 
 

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from datetime import datetime
+from decimal import ROUND_HALF_UP, Decimal
 from pathlib import Path
 
 from PyQt6.QtCore import Qt, QUrl
@@ -147,9 +148,17 @@ class ProjectionView(QScrollArea):
         else:
             labels = tuple(f"{control.value():g}%" for control in self.rates)
             for values, label in zip(scenarios, labels, strict=True):
+                rounded_values = [
+                    int(
+                        Decimal(str(value)).quantize(
+                            Decimal(1), rounding=ROUND_HALF_UP
+                        )
+                    )
+                    for value in values
+                ]
                 figure.add_scatter(
                     x=list(range(len(values))),
-                    y=values,
+                    y=rounded_values,
                     mode="lines",
                     name=label,
                     hovertemplate="Year %{x}<br>NT$ %{y:,.0f}<extra>%{fullData.name}</extra>",

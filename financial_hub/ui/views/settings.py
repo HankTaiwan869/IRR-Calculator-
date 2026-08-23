@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 from datetime import datetime, timedelta
-from pathlib import Path
 
 from PyQt6.QtCore import Qt, QThreadPool, pyqtSignal
 from PyQt6.QtWidgets import (
@@ -18,7 +17,6 @@ from PyQt6.QtWidgets import (
 )
 
 from ...database import backup_database
-from ...legacy_import import import_legacy_database
 from ...preferences import save_finmind_token
 from ...providers import FinMindProvider
 from ...services.quotes import sync_security_master
@@ -59,18 +57,6 @@ class SettingsView(QWidget):
         provider_form.addRow(self.sync_status)
         layout.addWidget(provider)
 
-        migration = QGroupBox("Legacy import")
-        migration_form = QFormLayout(migration)
-        self.import_status = QLabel(
-            "Import the original log table, then add opening positions from the Transactions workflow."
-        )
-        self.import_status.setWordWrap(True)
-        self.import_status.setObjectName("muted")
-        import_button = QPushButton("Choose Legacy Database…")
-        migration_form.addRow(self.import_status)
-        migration_form.addRow(import_button)
-        layout.addWidget(migration)
-
         backup = QGroupBox("Database & privacy")
         backup_layout = QVBoxLayout(backup)
         backup_layout.addWidget(
@@ -85,7 +71,6 @@ class SettingsView(QWidget):
         save.clicked.connect(self.save_token)
         test.clicked.connect(self.test_token)
         sync.clicked.connect(self.sync_master)
-        import_button.clicked.connect(self.import_legacy)
         backup_button.clicked.connect(self.backup_database)
 
     def save_token(self) -> None:
@@ -159,31 +144,6 @@ class SettingsView(QWidget):
 
     def _sync_complete(self, count: object) -> None:
         self.sync_status.setText(f"Security master updated: {count} records.")
-        self.data_changed.emit()
-
-    def import_legacy(self) -> None:
-        filename, _ = QFileDialog.getOpenFileName(
-            self,
-            "Select legacy SQLite database",
-            "",
-            "SQLite databases (*.db *.sqlite *.sqlite3);;All files (*)",
-        )
-        if not filename:
-            return
-        try:
-            with self.factory.begin() as session:
-                result = import_legacy_database(session, Path(filename))
-        except Exception as error:  # noqa: BLE001 - file import boundary
-            QMessageBox.warning(self, "Legacy import", str(error))
-            return
-        if result.already_imported:
-            self.import_status.setText(
-                f"Already imported ({result.imported_rows} rows). No duplicates were created."
-            )
-        else:
-            self.import_status.setText(
-                f"Imported {result.imported_rows} rows. Backup: {result.backup_path}"
-            )
         self.data_changed.emit()
 
     def backup_database(self) -> None:

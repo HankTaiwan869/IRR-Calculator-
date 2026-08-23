@@ -1,3 +1,5 @@
+from decimal import Decimal
+
 from PyQt6.QtCore import Qt
 from PyQt6.QtWidgets import QPushButton, QVBoxLayout, QWidget
 
@@ -43,3 +45,13 @@ def test_money_and_transaction_history_render_whole_numbers():
     )
     assert model.index(0, 4).data(Qt.ItemDataRole.DisplayRole) == "10"
     assert model.index(0, 5).data(Qt.ItemDataRole.DisplayRole) == "-1,234"
+
+
+def test_money_rounds_decimal_twd_values_half_up():
+    assert money(Decimal("1234.50")) == "NT$ 1,235"
+    assert money(Decimal("-1234.50")) == "NT$ -1,235"
+    assert money(None) == "Not calculable"
+
+
+def test_percentage_format_retains_decimal_places():
+    assert f"{Decimal('0.1234'):.2%}" == "12.34%"

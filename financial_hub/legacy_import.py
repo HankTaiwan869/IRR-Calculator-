@@ -1,68 +1,65 @@
 from __future__ import annotations
 
-import hashlib
-import shutil
 import sqlite3
 from dataclasses import dataclass
-from datetime import date, datetime
-from decimal import ROUND_HALF_UP, Decimal
+from datetime import date
+from decimal import ROUND_HALF_UP, Decimal, InvalidOperation
 from pathlib import Path
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from .exceptions import ValidationError
-from .models import ImportRun, Portfolio, Security, TransactionKind
+from .models import Portfolio, Security, TransactionKind
 from .services.transactions import TransactionInput, create_transaction
 
 
 @dataclass(frozen=True, slots=True)
 class ImportResult:
+    """Summary of the one-time legacy bootstrap."""
+
     imported_rows: int
-    already_imported: bool
-    backup_path: Path | None
-
-
-def _fingerprint(path: Path) -> str:
-    digest = hashlib.sha256()
-    with path.open("rb") as stream:
-        while chunk := stream.read(1024 * 1024):
-            digest.update(chunk)
-    return digest.hexdigest()
 
 
 def _round_integer(value: object) -> int:
-    return int(Decimal(str(value)).quantize(Decimal(1), rounding=ROUND_HALF_UP))
+    try:
+        number = Decimal(str(value))
+        if not number.is_finite():
+            raise InvalidOperation
+        return int(number.quantize(Decimal(1), rounding=ROUND_HALF_UP))
+    except (InvalidOperation, ValueError, TypeError) as error:
+        raise ValidationError("Legacy cash flow amount is invalid.") from error
 
 
-def import_legacy_database(
-    session: Session, source: Path | str, backup_dir: Path | None = None
-) -> ImportResult:
+def _read_legacy_rows(path: Path) -> list[tuple[int, str, str, object]]:
+    try:
+        with sqlite3.connect(f"file:{path.as_posix()}?mode=ro", uri=True) as connection:
+            table = connection.execute(
+                "SELECT 1 FROM sqlite_master WHERE type='table' AND name='log'"
+            ).fetchone()
+            if table is None:
+                raise ValidationError("The legacy database has no log table.")
+            return connection.execute(
+                "SELECT id, stock_code, time, amount FROM log ORDER BY id"
+            ).fetchall()
+    except ValidationError:
+        raise
+    except sqlite3.Error as error:
+        raise ValidationError(f"The legacy database could not be read: {error}") from error
+
+
+def import_legacy_database(session: Session, source: Path | str) -> ImportResult:
+    """Import the legacy ``log`` table into the fresh v1 database.
+
+    FinMind's security master must already have been synced.  Every legacy
+    stock code is therefore linked to the canonical FinMind ``securities``
+    row; no ``Legacy`` security records or import bookkeeping are created.
+    """
     path = Path(source).resolve()
     if not path.is_file():
         raise ValidationError("Legacy database does not exist.")
-    fingerprint = _fingerprint(path)
-    previous = session.scalar(
-        select(ImportRun).where(ImportRun.fingerprint == fingerprint)
-    )
-    if previous:
-        return ImportResult(previous.imported_rows, True, None)
-    with sqlite3.connect(f"file:{path.as_posix()}?mode=ro", uri=True) as connection:
-        table = connection.execute(
-            "SELECT 1 FROM sqlite_master WHERE type='table' AND name='log'"
-        ).fetchone()
-        if table is None:
-            raise ValidationError("The selected database has no legacy log table.")
-        rows = connection.execute(
-            "SELECT id, stock_code, time, amount FROM log ORDER BY id"
-        ).fetchall()
-    target_dir = (backup_dir or path.parent).resolve()
-    target_dir.mkdir(parents=True, exist_ok=True)
-    backup = (
-        target_dir
-        / f"{path.stem}.backup-{datetime.now().astimezone():%Y%m%d-%H%M%S}{path.suffix}"
-    )
-    shutil.copy2(path, backup)
+    rows = _read_legacy_rows(path)
+
     portfolio = session.scalar(
         select(Portfolio).where(Portfolio.name == "Imported portfolio")
     )
@@ -70,61 +67,29 @@ def import_legacy_database(
         portfolio = Portfolio(name="Imported portfolio")
         session.add(portfolio)
         session.flush()
-    for row_id, symbol, when, amount in rows:
-        security = session.scalar(
-            select(Security).where(
-                Security.provider == "Legacy", Security.symbol == str(symbol)
-            )
-        )
+
+    for row_id, raw_symbol, raw_date, raw_amount in rows:
+        symbol = str(raw_symbol).strip()
+        if not symbol:
+            raise ValidationError(f"Legacy row {row_id} has no stock code.")
+        security = session.scalar(select(Security).where(Security.symbol == symbol))
         if security is None:
-            security = Security(
-                provider="Legacy",
-                symbol=str(symbol),
-                name_zh="",
-                exchange="",
-                security_type="stock",
+            raise ValidationError(
+                f"FinMind security master has no record for {symbol}; "
+                "sync the security master before importing legacy data."
             )
-            session.add(security)
-            session.flush()
+        try:
+            trade_date = date.fromisoformat(str(raw_date)[:10])
+        except ValueError as error:
+            raise ValidationError(f"Legacy row {row_id} has an invalid date.") from error
         create_transaction(
             session,
             TransactionInput(
                 portfolio_id=portfolio.id,
                 security_id=security.id,
                 kind=TransactionKind.LEGACY_CASH_FLOW,
-                trade_date=date.fromisoformat(str(when)[:10]),
-                amount=_round_integer(amount),
-                source_key=f"legacy:{fingerprint}:{row_id}",
+                trade_date=trade_date,
+                amount=_round_integer(raw_amount),
             ),
         )
-    session.add(
-        ImportRun(
-            fingerprint=fingerprint, source_path=str(path), imported_rows=len(rows)
-        )
-    )
-    return ImportResult(len(rows), False, backup)
-
-
-def reconcile_opening_position(
-    session: Session,
-    portfolio_id: int,
-    security_id: int,
-    as_of: date,
-    shares: int,
-    total_cost: int | None = None,
-):
-    if total_cost is None or total_cost <= 0:
-        raise ValidationError(
-            "An opening position requires a positive initial or deemed investment."
-        )
-    return create_transaction(
-        session,
-        TransactionInput(
-            portfolio_id=portfolio_id,
-            security_id=security_id,
-            kind=TransactionKind.OPENING_POSITION,
-            trade_date=as_of,
-            shares_delta=shares,
-            amount=-total_cost,
-        ),
-    )
+    return ImportResult(imported_rows=len(rows))

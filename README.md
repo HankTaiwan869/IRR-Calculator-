@@ -19,20 +19,20 @@ For a development launch, `uv run python main.py` is equivalent. Run the test su
 uv run pytest
 ```
 
-Startup is deliberately offline. The application does not read credentials, contact FinMind, or import the charting backend until the associated feature is used.
+The first launch of a fresh default database fetches the FinMind security master and then imports the bundled legacy history. Price refreshes and charting remain explicit user actions.
 
 ## First use
 
-1. Open **Settings** and save a FinMind API token. The token is stored by `keyring` in Windows Credential Manager, not in SQLite or preferences.
-2. Select **Sync Security Master**. Security codes are then available for exact-symbol entry on Transactions.
-3. Create portfolios and add transactions.
+1. Launch the application. It creates the v1 database, fetches FinMind names, exchanges, and security types, and then imports `legacy-investment.db` against those records.
+2. If FinMind is unavailable, the application remains usable and retries the ordered bootstrap on the next launch. A token can be saved under **Settings** when needed; it is stored by `keyring` in Windows Credential Manager, not in SQLite or preferences.
+3. Create portfolios, reconcile the imported security with an opening position, and add transactions.
 4. Use **Refresh Prices** on the Dashboard when you want updated delayed closing prices.
 
 FinMind is the default data provider. Its `TaiwanStockInfo` and `TaiwanStockPrice` datasets supply the local security master and delayed daily closes. Availability, quotas, and accuracy remain subject to FinMind's service; verify important values independently.
 
 ## Accounting conventions
 
-All share quantities, TWD amounts, cached closes, profits, and projection values are stored and calculated as whole integers. Provider values and legacy decimal data are rounded to the nearest integer using half-up rounding.
+Share quantities and transaction TWD amounts remain whole integers. Cached quote prices are stored as `Decimal` values with two decimal places, and market values, profits, XIRR terminal values, and projections retain those decimals during calculations. User-visible TWD values are rounded to whole dollars using half-up rounding; percentage displays retain decimal places.
 
 - The transaction form asks for unsigned **Shares** and **Amount** values. The selected activity supplies the signs before the signed values are stored in the database.
 - A **buy** stores positive shares and a negative amount.
@@ -45,7 +45,7 @@ Holdings are derived by replaying transactions in date-and-ID order. Corrections
 
 Total assets are the current market value of holdings. Total profit is total assets plus the signed sum of transaction amounts. XIRR measures owner-level cash flows and includes a terminal market-value flow on the valuation date; zero-amount reinvestments are ignored because they are internal to the portfolio. A result is shown as **Not calculable** if prices are missing or cash flows lack both signs.
 
-## Data, backup, and migration
+## Data, backup, and first-run import
 
 The database and non-secret preferences are stored under:
 
@@ -53,9 +53,9 @@ The database and non-secret preferences are stored under:
 %LOCALAPPDATA%\IRRCalculator
 ```
 
-Back up `portfolio.sqlite3` while the application is closed. Price history is cached in the same database.
+The application creates a fresh v1 database under `%LOCALAPPDATA%\IRRCalculator`; an older application database is not migrated or read. Back up the active database while the application is closed. Price history is cached in the same database.
 
-The legacy importer accepts the original SQLite `log(id, stock_code, time, amount)` table. Before importing, it makes a timestamped copy beside the selected source (or in the requested backup directory). The import is content-fingerprinted and idempotent: choosing an unchanged source twice creates no duplicates. Legacy amounts remain signed owner cash amounts in an **Imported portfolio**. Because the old data has no shares, reconcile each security with an opening position afterward. Legacy stock codes may need to be matched to current FinMind securities manually. Legacy opening positions are migrated to negative amounts; an opening position with no known historical value uses zero and remains unavailable for reliable profit/IRR until corrected. Any historical owner top-up or payout attached to a reinvestment is preserved as a separate legacy cash-flow record.
+The one-time importer reads the original SQLite `log(id, stock_code, time, amount)` table from `legacy-investment.db` after the FinMind security master has been synced. Legacy rows remain signed owner cash amounts in an **Imported portfolio**, and their stock codes are attached to matching FinMind security records. Legacy transaction amounts are rounded to whole TWD using half-up rounding. Because the old data has no shares, reconcile each security with an opening position afterward. The importer is bootstrap functionality, not a general migration or backward-compatibility layer.
 
 ## Scope
 

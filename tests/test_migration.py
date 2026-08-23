@@ -1,87 +1,104 @@
 import sqlite3
 
-from sqlalchemy import func, select
+from sqlalchemy import select
 
-from financial_hub.legacy_import import (
-    import_legacy_database,
-    reconcile_opening_position,
-)
-from financial_hub.models import ImportRun, Portfolio, Transaction
-from financial_hub.services.analytics import replay_ledger
+from financial_hub import app as app_module
+from financial_hub.app import bootstrap_new_database
+from financial_hub.legacy_import import import_legacy_database
+from financial_hub.models import Portfolio, Security, Transaction
+from financial_hub.providers.base import SecurityInfo
 
 
-def test_legacy_import_is_idempotent_and_reconcilable(db, tmp_path):
-    _engine, factory, _ids = db
-    source = tmp_path / "legacy.db"
-    with sqlite3.connect(source) as connection:
+class FinMindMaster:
+    name = "FinMind"
+
+    def security_master(self):
+        return (
+            SecurityInfo(
+                symbol="00692",
+                name_zh="富邦公司治理",
+                exchange="twse",
+                security_type="etf",
+            ),
+        )
+
+
+def _legacy_source(path):
+    with sqlite3.connect(path) as connection:
         connection.execute(
             "CREATE TABLE log(id INTEGER PRIMARY KEY, stock_code TEXT, time TEXT, amount NUMERIC)"
         )
         connection.executemany(
             "INSERT INTO log VALUES (?, ?, ?, ?)",
-            [(1, "0050", "2024-01-01", -100), (2, "0050", "2024-06-01", 5)],
+            [
+                (1, "00692", "2024-01-01", -100.5),
+                (2, "00692", "2024-06-01", 5.5),
+            ],
         )
-    backup_dir = tmp_path / "backups"
-    with factory.begin() as session:
-        first = import_legacy_database(session, source, backup_dir)
-    with factory.begin() as session:
-        second = import_legacy_database(session, source, backup_dir)
-    assert first.imported_rows == 2 and not first.already_imported
-    assert second.already_imported
-    assert first.backup_path.is_file()
+
+
+def test_bootstrap_syncs_finmind_before_importing_legacy(
+    db, tmp_path, monkeypatch
+):
+    _engine, factory, _ids = db
+    source = tmp_path / "legacy.db"
+    _legacy_source(source)
+
+    monkeypatch.setattr(app_module, "get_finmind_token", lambda: "token")
+    monkeypatch.setattr(app_module, "FinMindProvider", lambda _token: FinMindMaster())
+    bootstrap_new_database(factory, source)
+
     with factory() as session:
-        assert session.scalar(select(func.count()).select_from(ImportRun)) == 1
+        security = session.scalar(
+            select(Security).where(Security.symbol == "00692")
+        )
+        assert security is not None
+        security_id = security.id
+        securities = list(
+            session.scalars(select(Security).where(Security.symbol == "00692"))
+        )
+        assert len(securities) == 1
+        assert securities[0].id == security_id
+        assert securities[0].name_zh == "富邦公司治理"
+        assert securities[0].exchange == "twse"
+        assert securities[0].security_type == "etf"
+
         imported = session.scalar(
             select(Portfolio).where(Portfolio.name == "Imported portfolio")
         )
+        assert imported is not None
         rows = list(
             session.scalars(
-                select(Transaction).where(Transaction.portfolio_id == imported.id)
+                select(Transaction)
+                .where(Transaction.portfolio_id == imported.id)
+                .order_by(Transaction.id)
             )
         )
-        assert sum((item.amount for item in rows), 0) == -95
-        security_id = rows[0].security_id
-    with factory.begin() as session:
-        reconcile_opening_position(
-            session,
-            imported.id,
-            security_id,
-            __import__("datetime").date(2024, 12, 31),
-            10,
-            100,
-        )
-    with factory() as session:
-        ledger = replay_ledger(
-            list(
-                session.scalars(
-                    select(Transaction).where(Transaction.portfolio_id == imported.id)
-                )
-            )
-        )
-    assert ledger.shares == 10
-    assert ledger.opening_position_complete
+        assert len(rows) == 2
+        assert [row.security_id for row in rows] == [security_id, security_id]
+        # Transaction amounts remain whole TWD; only quote prices are decimal.
+        assert [row.amount for row in rows] == [-101, 6]
 
 
-def test_legacy_import_rounds_fractional_cash_flows_half_up(db, tmp_path):
+def test_legacy_import_does_not_create_legacy_security_duplicates(db, tmp_path):
     _engine, factory, _ids = db
-    source = tmp_path / "fractional-legacy.db"
-    with sqlite3.connect(source) as connection:
-        connection.execute(
-            "CREATE TABLE log(id INTEGER PRIMARY KEY, stock_code TEXT, time TEXT, amount NUMERIC)"
-        )
-        connection.executemany(
-            "INSERT INTO log VALUES (?, ?, ?, ?)",
-            [(1, "0050", "2024-01-01", -100.5), (2, "0050", "2024-06-01", 5.5)],
+    source = tmp_path / "legacy.db"
+    _legacy_source(source)
+
+    with factory.begin() as session:
+        session.add(
+            Security(
+                symbol="00692",
+                name_zh="富邦公司治理",
+                exchange="twse",
+                security_type="etf",
+            )
         )
 
     with factory.begin() as session:
-        import_legacy_database(session, source, tmp_path / "backups")
+        import_legacy_database(session, source)
 
     with factory() as session:
-        rows = list(
-            session.scalars(
-                select(Transaction).where(Transaction.source_key.is_not(None))
-            )
-        )
-    assert [row.amount for row in rows] == [-101, 6]
-    assert all(type(row.amount) is int for row in rows)
+        assert session.scalar(
+            select(Security.id).where(Security.symbol == "00692")
+        ) is not None

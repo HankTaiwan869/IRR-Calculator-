@@ -1,4 +1,5 @@
 import sqlite3
+from decimal import Decimal
 
 import pytest
 from sqlalchemy.exc import IntegrityError
@@ -15,7 +16,7 @@ def test_foreign_keys_uniqueness_and_positive_quotes(db):
     with pytest.raises(IntegrityError), factory.begin() as session:
         session.add(Portfolio(name="Core"))
     with pytest.raises(IntegrityError), factory.begin() as session:
-        session.add(Security(provider="FinMind", symbol="2330", name_zh="duplicate"))
+        session.add(Security(symbol="2330", name_zh="duplicate"))
     with pytest.raises(IntegrityError), factory.begin() as session:
         today = __import__("datetime").date.today()
         session.add(
@@ -23,70 +24,40 @@ def test_foreign_keys_uniqueness_and_positive_quotes(db):
                 security_id=security_id,
                 market_date=today,
                 refresh_cycle_date=today,
-                close=0,
+                close=Decimal("0.00"),
             )
         )
 
 
-def test_fresh_database_uses_v4_single_amount_schema(tmp_path):
+def test_fresh_database_uses_simplified_v1_schema(tmp_path):
     path = tmp_path / "fresh.sqlite3"
     engine = create_database_engine(path)
     initialize_database(engine)
 
     with sqlite3.connect(path) as connection:
-        assert connection.execute(
-            "SELECT value FROM schema_meta WHERE key = 'schema_version'"
-        ).fetchone() == ("4",)
-        transaction_columns = {
-            row[1] for row in connection.execute("PRAGMA table_info(transactions)")
-        }
-        assert {"shares_delta", "amount"}.issubset(transaction_columns)
-        assert "deleted_at" not in transaction_columns
-        assert connection.execute(
-            """
-            SELECT 1
-            FROM sqlite_master
-            WHERE type = 'table' AND name = 'transaction_audit'
-            """
-        ).fetchone() is None
-        assert {
-            "external_cash_flow",
-            "trade_amount",
-            "income_amount",
-            "unit_price",
-            "fees",
-            "notes",
-        }.isdisjoint(transaction_columns)
-
-    # Re-opening an already-supported database is a no-op.
-    initialize_database(engine)
-    engine.dispose()
-
-
-@pytest.mark.parametrize("version", ["1", "2", "3", "5"])
-def test_non_v4_database_is_rejected_without_schema_changes(tmp_path, version):
-    path = tmp_path / f"v{version}.sqlite3"
-    with sqlite3.connect(path) as connection:
-        connection.executescript("""
-            CREATE TABLE schema_meta (
-                key VARCHAR(80) PRIMARY KEY,
-                value VARCHAR(240) NOT NULL
-            );
-            CREATE TABLE sentinel (id INTEGER PRIMARY KEY);
-        """)
-        connection.execute(
-            "INSERT INTO schema_meta VALUES ('schema_version', ?)", (version,)
-        )
-
-    engine = create_database_engine(path)
-    with pytest.raises(RuntimeError, match=f"Unsupported database schema {version}"):
-        initialize_database(engine)
-    engine.dispose()
-
-    with sqlite3.connect(path) as connection:
-        assert {
+        assert connection.execute("PRAGMA user_version").fetchone() == (1,)
+        tables = {
             row[0]
             for row in connection.execute(
                 "SELECT name FROM sqlite_master WHERE type = 'table'"
             )
-        } == {"schema_meta", "sentinel"}
+        }
+        assert {"portfolios", "securities", "transactions", "quotes"}.issubset(
+            tables
+        )
+        assert {"schema_meta", "import_runs", "transaction_audit"}.isdisjoint(tables)
+
+        transaction_columns = {
+            row[1] for row in connection.execute("PRAGMA table_info(transactions)")
+        }
+        assert {"shares_delta", "amount"}.issubset(transaction_columns)
+        assert {"source_key", "deleted_at"}.isdisjoint(transaction_columns)
+
+        quote_columns = {
+            row[1]: row[2] for row in connection.execute("PRAGMA table_info(quotes)")
+        }
+        assert quote_columns["close"].upper().startswith("NUMERIC")
+
+    # Re-opening an already-supported v1 database is a no-op.
+    initialize_database(engine)
+    engine.dispose()

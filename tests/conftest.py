@@ -18,7 +18,6 @@ def db(tmp_path):
     with factory.begin() as session:
         portfolio = Portfolio(name="Core")
         security = Security(
-            provider="FinMind",
             symbol="2330",
             name_zh="台積電",
             exchange="twse",

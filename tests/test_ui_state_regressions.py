@@ -184,7 +184,6 @@ def test_history_delete_is_permanent_and_refreshes_summaries(qtbot, db, monkeypa
                 transaction,
                 Quote(
                     security_id=security_id,
-                    provider="FinMind",
                     market_date=today,
                     refresh_cycle_date=today,
                     close=12,

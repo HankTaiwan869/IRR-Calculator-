@@ -3,7 +3,7 @@ from __future__ import annotations
 from collections.abc import Iterable
 from dataclasses import dataclass
 from datetime import date
-from decimal import ROUND_HALF_UP, Decimal
+from decimal import Decimal
 
 from pyxirr import xirr
 from sqlalchemy import Select, select
@@ -12,6 +12,8 @@ from sqlalchemy.orm import Session
 from ..models import Portfolio, Quote, Security, Transaction, TransactionKind
 
 ZERO = 0
+MONEY_ZERO = Decimal(0)
+MONEY_ONE = Decimal(1)
 
 
 @dataclass(frozen=True, slots=True)
@@ -54,15 +56,15 @@ class Position:
     security_id: int
     symbol: str
     shares: int
-    market_value: int | None
+    market_value: Decimal | None
     dividend_income: int
 
 
 @dataclass(frozen=True, slots=True)
 class PortfolioSummary:
-    total_assets: int | None
+    total_assets: Decimal | None
     dividend_income: int
-    total_profit: int | None
+    total_profit: Decimal | None
     annual_irr: float | None
     monthly_irr: float | None
     positions: tuple[Position, ...]
@@ -80,15 +82,16 @@ def _transactions_query(
 
 
 def calculate_xirr(
-    rows: list[Transaction], terminal_value: int, valuation_date: date
+    rows: list[Transaction], terminal_value: Decimal | int, valuation_date: date
 ) -> float | None:
-    dated = [
-        (row.trade_date, float(row.amount))
+    dated: list[tuple[date, Decimal]] = [
+        (row.trade_date, Decimal(str(row.amount)))
         for row in rows
         if row.trade_date <= valuation_date and row.amount != ZERO
     ]
-    if terminal_value != ZERO:
-        dated.append((valuation_date, float(terminal_value)))
+    terminal = Decimal(str(terminal_value))
+    if terminal != MONEY_ZERO:
+        dated.append((valuation_date, terminal))
     values = [amount for _, amount in dated]
     if (
         not dated
@@ -97,7 +100,11 @@ def calculate_xirr(
     ):
         return None
     try:
-        result = xirr([day for day, _ in dated], values)
+        # pyxirr accepts numeric floats; keep all values exact until this API
+        # boundary so fractional quote prices are not lost in the ledger.
+        result = xirr(
+            [day for day, _ in dated], [float(value) for value in values]
+        )
         return None if result is None else float(result)
     except (ValueError, TypeError, OverflowError, ZeroDivisionError):
         return None
@@ -135,7 +142,11 @@ def portfolio_summary(
             .order_by(Quote.market_date.desc())
             .limit(1)
         )
-        market_value = None if quote is None else shares * quote.close
+        market_value = (
+            None
+            if quote is None
+            else Decimal(shares) * Decimal(str(quote.close))
+        )
         positions.append(
             Position(
                 security_id=security_id,
@@ -146,7 +157,10 @@ def portfolio_summary(
             )
         )
 
-    priced_assets = sum((item.market_value or ZERO for item in positions), ZERO)
+    priced_assets = sum(
+        (item.market_value for item in positions if item.market_value is not None),
+        MONEY_ZERO,
+    )
     missing_open_value = any(
         item.shares != ZERO and item.market_value is None for item in positions
     )
@@ -167,7 +181,8 @@ def portfolio_summary(
     total_profit = (
         None
         if total_assets is None or not opening_complete
-        else total_assets + sum((row.amount for row in rows), ZERO)
+        else total_assets
+        + sum((Decimal(str(row.amount)) for row in rows), MONEY_ZERO)
     )
     annual = (
         None
@@ -186,20 +201,17 @@ def portfolio_summary(
 
 
 def projection(
-    principal: int | None,
+    principal: Decimal | int | None,
     years: int = 30,
-    rates: tuple[float, ...] = (0.065, 0.09, 0.115),
-) -> tuple[tuple[int, ...], ...] | None:
+    rates: tuple[Decimal | float, ...] = (0.065, 0.09, 0.115),
+) -> tuple[tuple[Decimal, ...], ...] | None:
     if principal is None:
         return None
-    decimal_principal = Decimal(principal)
+    decimal_principal = Decimal(str(principal))
     return tuple(
         tuple(
-            int(
-                (
-                    decimal_principal * ((Decimal(1) + Decimal(str(rate))) ** year)
-                ).quantize(Decimal(1), rounding=ROUND_HALF_UP)
-            )
+            decimal_principal
+            * ((MONEY_ONE + Decimal(str(rate))) ** year)
             for year in range(years + 1)
         )
         for rate in rates
