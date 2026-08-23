@@ -78,6 +78,11 @@ def validate(data: TransactionInput) -> TransactionInput:
             raise ValidationError(
                 "An opening position requires positive shares and a negative amount."
             )
+    elif kind is TransactionKind.POSITION_RECONCILIATION:
+        if data.shares_delta <= ZERO or data.amount != ZERO:
+            raise ValidationError(
+                "A position reconciliation requires positive shares and a zero amount."
+            )
     elif kind is TransactionKind.LEGACY_CASH_FLOW:
         if data.shares_delta != ZERO:
             raise ValidationError("A legacy cash flow cannot contain shares.")

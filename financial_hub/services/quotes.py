@@ -65,7 +65,6 @@ def refresh_prices(
     provider: SecuritiesProvider,
     cycle_date: date,
     portfolio_id: int | None = None,
-    retry: bool = False,
 ) -> RefreshResult:
     with factory() as session:
         query = (
@@ -84,7 +83,7 @@ def refresh_prices(
     failed: list[tuple[str, str]] = []
     for security in securities:
         with factory() as session:
-            if not retry and session.scalar(
+            if session.scalar(
                 select(Quote.id).where(
                     Quote.security_id == security.id,
                     Quote.refresh_cycle_date == cycle_date,

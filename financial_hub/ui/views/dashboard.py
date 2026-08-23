@@ -42,7 +42,7 @@ class MetricCard(QFrame):
 
 
 class DashboardView(QScrollArea):
-    refresh_requested = pyqtSignal(object, bool)
+    refresh_requested = pyqtSignal(object)
 
     def __init__(self, session_factory, parent=None) -> None:
         super().__init__(parent)
@@ -61,17 +61,11 @@ class DashboardView(QScrollArea):
         refresh = QPushButton("Refresh Prices")
         refresh.setObjectName("primary")
         refresh.clicked.connect(
-            lambda: self.refresh_requested.emit(self.portfolio.currentData(), False)
-        )
-        retry = QPushButton("Retry Prices")
-        retry.setToolTip("Explicitly bypass the current daily refresh cache")
-        retry.clicked.connect(
-            lambda: self.refresh_requested.emit(self.portfolio.currentData(), True)
+            lambda: self.refresh_requested.emit(self.portfolio.currentData())
         )
         bar.addWidget(QLabel("Portfolio"))
         bar.addWidget(self.portfolio, 1)
         bar.addStretch()
-        bar.addWidget(retry)
         bar.addWidget(refresh)
         layout.addLayout(bar)
 

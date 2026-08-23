@@ -24,6 +24,7 @@ def test_create_form_uses_unsigned_values_and_activity_signs(qtbot, db, monkeypa
         TransactionKind.DIVIDEND: (0, 1_000),
         TransactionKind.REINVESTED_DIVIDEND: (10, 0),
         TransactionKind.OPENING_POSITION: (10, -1_000),
+        TransactionKind.POSITION_RECONCILIATION: (10, 0),
     }
     for kind, signed in expected.items():
         view.kind.setCurrentIndex(view.kind.findData(kind))
@@ -45,6 +46,11 @@ def test_create_form_uses_unsigned_values_and_activity_signs(qtbot, db, monkeypa
     view.shares.setValue(12)
     view.amount.setValue(900)
     view.kind.setCurrentIndex(view.kind.findData(TransactionKind.REINVESTED_DIVIDEND))
+    assert view.shares.value() == 12
+    assert not view.amount.isEnabled()
+    assert view.amount.value() == 0
+
+    view.kind.setCurrentIndex(view.kind.findData(TransactionKind.POSITION_RECONCILIATION))
     assert view.shares.value() == 12
     assert not view.amount.isEnabled()
     assert view.amount.value() == 0
@@ -156,6 +162,7 @@ def test_edit_form_uses_unsigned_values_and_activity_signs(qtbot, db, monkeypatc
         TransactionKind.DIVIDEND: (0, 1_000),
         TransactionKind.REINVESTED_DIVIDEND: (10, 0),
         TransactionKind.OPENING_POSITION: (10, -1_000),
+        TransactionKind.POSITION_RECONCILIATION: (10, 0),
     }
     monkeypatch.setattr(QMessageBox, "warning", lambda *_args: None)
     for kind, signed in expected.items():

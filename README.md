@@ -40,6 +40,7 @@ Share quantities and transaction TWD amounts remain whole integers. Cached quote
 - A **paid-out dividend** stores zero shares and a positive amount. Paid-out dividends are included in the reported dividend-income total.
 - A **reinvested dividend** stores positive acquired shares and an amount of zero. It is an internal portfolio action and is not included in dividend-income totals.
 - An **opening position** stores positive shares and a negative amount representing the value invested when tracking begins.
+- A **position reconciliation** stores positive legacy shares and an amount of zero. It restores missing share quantities without creating an owner cash flow or cost basis.
 
 Holdings are derived by replaying transactions in date-and-ID order. Corrections are edits, and deleting a transaction permanently removes it. Transactions that would make a holding negative at any later point are rejected.
 

@@ -57,13 +57,8 @@ class SettingsView(QWidget):
         provider_form.addRow(self.sync_status)
         layout.addWidget(provider)
 
-        backup = QGroupBox("Database & privacy")
+        backup = QGroupBox("Database")
         backup_layout = QVBoxLayout(backup)
-        backup_layout.addWidget(
-            QLabel(
-                "Portfolio data stays under %LOCALAPPDATA%\\IRRCalculator. The FinMind token is stored in Windows Credential Manager."
-            )
-        )
         backup_button = QPushButton("Back Up Database…")
         backup_layout.addWidget(backup_button, alignment=Qt.AlignmentFlag.AlignLeft)
         layout.addWidget(backup)

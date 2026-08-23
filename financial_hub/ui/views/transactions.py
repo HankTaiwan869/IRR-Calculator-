@@ -117,11 +117,14 @@ class TransactionsView(QScrollArea):
     def _kind_changed(self) -> None:
         kind = self.kind.currentData()
         reinvested = kind is TransactionKind.REINVESTED_DIVIDEND
+        reconciliation = kind is TransactionKind.POSITION_RECONCILIATION
         dividend = kind is TransactionKind.DIVIDEND
         opening = kind is TransactionKind.OPENING_POSITION
         self.help.setText(
             "A reinvested dividend adds shares with zero owner cash flow and does not count as dividend income."
             if reinvested
+            else "A position reconciliation adds legacy shares with zero owner cash flow and does not establish a cost basis."
+            if reconciliation
             else "Enter the paid dividend amount; it is included in total dividend income."
             if dividend
             else "Enter the existing shares and their initial or deemed investment amount."
@@ -129,7 +132,7 @@ class TransactionsView(QScrollArea):
             else "Enter shares and amount; the selected activity determines their ledger direction."
         )
         self._set_applicable(self.shares, not dividend)
-        self._set_applicable(self.amount, not reinvested)
+        self._set_applicable(self.amount, not (reinvested or reconciliation))
 
     @staticmethod
     def _set_applicable(widget: QDoubleSpinBox, applicable: bool) -> None:
@@ -194,6 +197,8 @@ class TransactionsView(QScrollArea):
         if kind is TransactionKind.DIVIDEND:
             return 0, amount
         if kind is TransactionKind.REINVESTED_DIVIDEND:
+            return shares, 0
+        if kind is TransactionKind.POSITION_RECONCILIATION:
             return shares, 0
         if kind is TransactionKind.OPENING_POSITION:
             return shares, -amount

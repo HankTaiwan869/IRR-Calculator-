@@ -107,6 +107,7 @@ class TransactionDialog(QDialog):
     def _kind_changed(self) -> None:
         kind = self.kind.currentData()
         reinvested = kind is TransactionKind.REINVESTED_DIVIDEND
+        reconciliation = kind is TransactionKind.POSITION_RECONCILIATION
         dividend = kind is TransactionKind.DIVIDEND
         opening = kind is TransactionKind.OPENING_POSITION
         legacy = kind is TransactionKind.LEGACY_CASH_FLOW
@@ -114,6 +115,8 @@ class TransactionDialog(QDialog):
         self.help.setText(
             "A reinvested dividend adds shares with zero owner cash flow and does not count as dividend income."
             if reinvested
+            else "A position reconciliation adds legacy shares with zero owner cash flow and does not establish a cost basis."
+            if reconciliation
             else "Enter the paid dividend amount; it is included in total dividend income."
             if dividend
             else "An opening position adds existing shares; enter the initial or deemed investment amount."
@@ -123,7 +126,7 @@ class TransactionDialog(QDialog):
             else "Buys add shares and deduct the amount. Sells remove shares and add the amount."
         )
         self._set_applicable(self.shares, not (dividend or legacy))
-        self._set_applicable(self.amount, not reinvested)
+        self._set_applicable(self.amount, not (reinvested or reconciliation))
 
     @staticmethod
     def _set_applicable(widget: QDoubleSpinBox, applicable: bool) -> None:
@@ -165,6 +168,8 @@ class TransactionDialog(QDialog):
         if kind is TransactionKind.DIVIDEND:
             return 0, amount
         if kind is TransactionKind.REINVESTED_DIVIDEND:
+            return shares, 0
+        if kind is TransactionKind.POSITION_RECONCILIATION:
             return shares, 0
         if kind is TransactionKind.OPENING_POSITION:
             return shares, -amount

@@ -40,7 +40,10 @@ def replay_ledger(rows: Iterable[Transaction]) -> LedgerResult:
             # historical investment; total profit/IRR are then indeterminate.
             if kind is TransactionKind.OPENING_POSITION and row.amount >= ZERO:
                 opening_complete = False
-        elif kind is TransactionKind.SELL:
+        elif kind in (
+            TransactionKind.POSITION_RECONCILIATION,
+            TransactionKind.SELL,
+        ):
             shares += row.shares_delta
         elif kind is TransactionKind.DIVIDEND:
             dividends += row.amount
@@ -102,9 +105,7 @@ def calculate_xirr(
     try:
         # pyxirr accepts numeric floats; keep all values exact until this API
         # boundary so fractional quote prices are not lost in the ledger.
-        result = xirr(
-            [day for day, _ in dated], [float(value) for value in values]
-        )
+        result = xirr([day for day, _ in dated], [float(value) for value in values])
         return None if result is None else float(result)
     except (ValueError, TypeError, OverflowError, ZeroDivisionError):
         return None
@@ -143,9 +144,7 @@ def portfolio_summary(
             .limit(1)
         )
         market_value = (
-            None
-            if quote is None
-            else Decimal(shares) * Decimal(str(quote.close))
+            None if quote is None else Decimal(shares) * Decimal(str(quote.close))
         )
         positions.append(
             Position(
@@ -181,8 +180,7 @@ def portfolio_summary(
     total_profit = (
         None
         if total_assets is None or not opening_complete
-        else total_assets
-        + sum((Decimal(str(row.amount)) for row in rows), MONEY_ZERO)
+        else total_assets + sum((Decimal(str(row.amount)) for row in rows), MONEY_ZERO)
     )
     annual = (
         None
@@ -210,8 +208,7 @@ def projection(
     decimal_principal = Decimal(str(principal))
     return tuple(
         tuple(
-            decimal_principal
-            * ((MONEY_ONE + Decimal(str(rate))) ** year)
+            decimal_principal * ((MONEY_ONE + Decimal(str(rate))) ** year)
             for year in range(years + 1)
         )
         for rate in rates

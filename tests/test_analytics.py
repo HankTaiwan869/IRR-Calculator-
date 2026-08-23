@@ -53,6 +53,36 @@ def test_reinvested_dividend_updates_shares_but_not_cash_or_dividend_total(db):
     assert summary.annual_irr is not None and summary.annual_irr > 0.19
 
 
+def test_position_reconciliation_updates_shares_without_cash_flow(db):
+    _engine, factory, (portfolio_id, security_id) = db
+    with factory.begin() as session:
+        create_transaction(
+            session,
+            TransactionInput(
+                portfolio_id,
+                security_id,
+                TransactionKind.POSITION_RECONCILIATION,
+                date(2024, 1, 1),
+                10,
+                0,
+            ),
+        )
+        session.add(
+            Quote(
+                security_id=security_id,
+                market_date=date(2025, 1, 1),
+                refresh_cycle_date=date(2025, 1, 1),
+                close=11,
+            )
+        )
+    with factory() as session:
+        summary = portfolio_summary(session, date(2025, 1, 1), portfolio_id)
+    assert summary.positions[0].shares == 10
+    assert summary.total_assets == 110
+    assert summary.total_profit == 110
+    assert summary.annual_irr is None
+
+
 def test_paid_out_dividend_is_counted_once_in_profit_and_income(db):
     _engine, factory, (portfolio_id, security_id) = db
     with factory.begin() as session:

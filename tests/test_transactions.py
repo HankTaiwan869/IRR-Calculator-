@@ -55,6 +55,7 @@ def test_signed_rules_and_backdated_negative_holdings(db):
         (TransactionKind.DIVIDEND, 1, 10),
         (TransactionKind.REINVESTED_DIVIDEND, 1, 10),
         (TransactionKind.OPENING_POSITION, 1, 0),
+        (TransactionKind.POSITION_RECONCILIATION, 0, 0),
         (TransactionKind.LEGACY_CASH_FLOW, 1, 10),
     ),
 )

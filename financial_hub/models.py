@@ -29,6 +29,7 @@ class TransactionKind(StrEnum):
     DIVIDEND = "DIVIDEND"
     REINVESTED_DIVIDEND = "REINVESTED_DIVIDEND"
     OPENING_POSITION = "OPENING_POSITION"
+    POSITION_RECONCILIATION = "POSITION_RECONCILIATION"
     LEGACY_CASH_FLOW = "LEGACY_CASH_FLOW"
 
 
@@ -48,9 +49,7 @@ class Portfolio(Base):
 
 class Security(Base):
     __tablename__ = "securities"
-    __table_args__ = (
-        UniqueConstraint("symbol", name="uq_security_symbol"),
-    )
+    __table_args__ = (UniqueConstraint("symbol", name="uq_security_symbol"),)
     id: Mapped[int] = mapped_column(primary_key=True)
     symbol: Mapped[str] = mapped_column(String(32), nullable=False)
     name_zh: Mapped[str] = mapped_column(String(160), default="", nullable=False)
@@ -93,9 +92,7 @@ class Transaction(Base):
 class Quote(Base):
     __tablename__ = "quotes"
     __table_args__ = (
-        UniqueConstraint(
-            "security_id", "market_date", name="uq_quote_security_day"
-        ),
+        UniqueConstraint("security_id", "market_date", name="uq_quote_security_day"),
         CheckConstraint("close > 0", name="ck_quote_positive"),
         Index("ix_quotes_security_date", "security_id", "market_date"),
     )

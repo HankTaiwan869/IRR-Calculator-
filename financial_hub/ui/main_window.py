@@ -98,8 +98,8 @@ class MainWindow(QMainWindow):
             self.dashboard,
             self.projection,
             self.transactions,
-            self.history,
             self.portfolios,
+            self.history,
             self.settings,
         ):
             self.stack.addWidget(page)
@@ -119,7 +119,7 @@ class MainWindow(QMainWindow):
         refresh = QAction("Refresh Prices", self)
         refresh.setShortcut(QKeySequence("Ctrl+R"))
         refresh.triggered.connect(
-            lambda: self.refresh_prices(self.dashboard.portfolio.currentData(), False)
+            lambda: self.refresh_prices(self.dashboard.portfolio.currentData())
         )
         self.addAction(refresh)
         new_transaction = QAction("New Transaction", self)
@@ -173,7 +173,7 @@ class MainWindow(QMainWindow):
         self.history.reload()
         self.portfolios.reload()
 
-    def refresh_prices(self, portfolio_id: int | None, retry: bool = False) -> None:
+    def refresh_prices(self, portfolio_id: int | None) -> None:
         try:
             token = get_finmind_token()
         except Exception as error:  # noqa: BLE001 - credential backend boundary
@@ -190,7 +190,7 @@ class MainWindow(QMainWindow):
         today = datetime.now().astimezone().date()
         worker = FunctionWorker(
             lambda: refresh_prices(
-                self.factory, FinMindProvider(token), today, portfolio_id, retry
+                self.factory, FinMindProvider(token), today, portfolio_id
             )
         )
         worker.signals.result.connect(self._refresh_complete)
