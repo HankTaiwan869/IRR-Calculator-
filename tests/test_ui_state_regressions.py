@@ -13,7 +13,6 @@ from financial_hub.models import (
     Portfolio,
     Quote,
     Transaction,
-    TransactionAudit,
     TransactionKind,
 )
 from financial_hub.services.transactions import TransactionInput
@@ -119,9 +118,7 @@ def test_table_selection_uses_a_single_left_check(qtbot, db):
         assert table.verticalHeader().indicator_text(0) == "✓"
 
 
-def test_nonempty_portfolio_delete_removes_transactions_and_audits(
-    qtbot, db, monkeypatch
-):
+def test_nonempty_portfolio_delete_removes_transactions(qtbot, db, monkeypatch):
     _engine, factory, (portfolio_id, security_id) = db
     with factory.begin() as session:
         transaction = Transaction(
@@ -133,15 +130,6 @@ def test_nonempty_portfolio_delete_removes_transactions_and_audits(
             amount=-100,
         )
         session.add(transaction)
-        session.flush()
-        session.add(
-            TransactionAudit(
-                transaction_id=transaction.id,
-                action="EDIT",
-                before={"amount": -90},
-                after={"amount": -100},
-            )
-        )
 
     window = MainWindow(factory)
     qtbot.addWidget(window)
@@ -159,7 +147,6 @@ def test_nonempty_portfolio_delete_removes_transactions_and_audits(
     with factory() as session:
         assert session.get(Portfolio, portfolio_id) is None
         assert session.scalar(select(func.count()).select_from(Transaction)) == 0
-        assert session.scalar(select(func.count()).select_from(TransactionAudit)) == 0
     assert _combo_items(window.transactions.portfolio) == []
 
 
@@ -194,15 +181,6 @@ def test_history_delete_is_permanent_and_refreshes_summaries(qtbot, db, monkeypa
         )
         session.add_all(
             (
-                Transaction(
-                    portfolio_id=portfolio_id,
-                    security_id=security_id,
-                    kind=TransactionKind.BUY.value,
-                    trade_date=today,
-                    shares_delta=50,
-                    amount=-500,
-                    deleted_at=datetime.now().astimezone(),
-                ),
                 transaction,
                 Quote(
                     security_id=security_id,

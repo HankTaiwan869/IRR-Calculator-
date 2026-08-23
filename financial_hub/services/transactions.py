@@ -1,15 +1,14 @@
 from __future__ import annotations
 
 from dataclasses import asdict, dataclass
-from datetime import date, datetime
+from datetime import date
 from decimal import Decimal
-from typing import Any
 
-from sqlalchemy import delete, select
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from ..exceptions import ValidationError
-from ..models import Transaction, TransactionAudit, TransactionKind
+from ..models import Transaction, TransactionKind
 
 ZERO = 0
 
@@ -89,26 +88,6 @@ def validate(data: TransactionInput) -> TransactionInput:
     return data
 
 
-def snapshot(transaction: Transaction) -> dict[str, Any]:
-    fields = (
-        "portfolio_id",
-        "security_id",
-        "kind",
-        "trade_date",
-        "shares_delta",
-        "amount",
-        "source_key",
-        "deleted_at",
-    )
-    result: dict[str, Any] = {}
-    for field in fields:
-        value = getattr(transaction, field)
-        if isinstance(value, (date, datetime)):
-            value = value.isoformat()
-        result[field] = value
-    return result
-
-
 def _apply(transaction: Transaction, data: TransactionInput) -> None:
     for key, value in asdict(data).items():
         if key == "kind":
@@ -126,7 +105,6 @@ def _assert_nonnegative_ledger(
         .where(
             Transaction.portfolio_id == portfolio_id,
             Transaction.security_id == security_id,
-            Transaction.deleted_at.is_(None),
         )
         .order_by(Transaction.trade_date, Transaction.id)
     )
@@ -156,20 +134,11 @@ def edit_transaction(
     if transaction is None:
         raise ValidationError("Transaction not found.")
     data = validate(data)
-    before = snapshot(transaction)
     old_scope = (transaction.portfolio_id, transaction.security_id)
     _apply(transaction, data)
     session.flush()
     _assert_nonnegative_ledger(session, *old_scope)
     _assert_nonnegative_ledger(session, data.portfolio_id, data.security_id)
-    session.add(
-        TransactionAudit(
-            transaction_id=transaction.id,
-            action="EDIT",
-            before=before,
-            after=snapshot(transaction),
-        )
-    )
     return transaction
 
 
@@ -178,13 +147,7 @@ def delete_transaction(session: Session, transaction_id: int) -> Transaction:
     if transaction is None:
         raise ValidationError("Transaction not found.")
     scope = (transaction.portfolio_id, transaction.security_id)
-    session.execute(
-        delete(TransactionAudit).where(
-            TransactionAudit.transaction_id == transaction_id
-        )
-    )
     session.delete(transaction)
     session.flush()
     _assert_nonnegative_ledger(session, *scope)
     return transaction
-

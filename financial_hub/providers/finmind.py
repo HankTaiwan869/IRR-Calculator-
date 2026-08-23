@@ -94,7 +94,8 @@ class FinMindProvider:
         for item in reversed(records):
             try:
                 raw_close = Decimal(str(item["close"]))
-                close = int(raw_close.quantize(Decimal(1), rounding=ROUND_HALF_UP))
+                close = raw_close.quantize(Decimal("1.00"), rounding=ROUND_HALF_UP)
+                print(close)
                 market_date = date.fromisoformat(str(item["date"])[:10])
             except (KeyError, ValueError, InvalidOperation, TypeError) as error:
                 raise ProviderError(

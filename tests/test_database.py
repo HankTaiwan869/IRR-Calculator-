@@ -6,7 +6,6 @@ from sqlalchemy.exc import IntegrityError
 from financial_hub.database import (
     create_database_engine,
     initialize_database,
-    session_factory,
 )
 from financial_hub.models import Portfolio, Quote, Security
 
@@ -42,6 +41,14 @@ def test_fresh_database_uses_v4_single_amount_schema(tmp_path):
             row[1] for row in connection.execute("PRAGMA table_info(transactions)")
         }
         assert {"shares_delta", "amount"}.issubset(transaction_columns)
+        assert "deleted_at" not in transaction_columns
+        assert connection.execute(
+            """
+            SELECT 1
+            FROM sqlite_master
+            WHERE type = 'table' AND name = 'transaction_audit'
+            """
+        ).fetchone() is None
         assert {
             "external_cash_flow",
             "trade_amount",

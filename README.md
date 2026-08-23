@@ -41,7 +41,7 @@ All share quantities, TWD amounts, cached closes, profits, and projection values
 - A **reinvested dividend** stores positive acquired shares and an amount of zero. It is an internal portfolio action and is not included in dividend-income totals.
 - An **opening position** stores positive shares and a negative amount representing the value invested when tracking begins.
 
-Holdings are derived by replaying transactions in date-and-ID order. Corrections are soft deletes or edits with before/after audit records. Transactions that would make a holding negative at any later point are rejected.
+Holdings are derived by replaying transactions in date-and-ID order. Corrections are edits, and deleting a transaction permanently removes it. Transactions that would make a holding negative at any later point are rejected.
 
 Total assets are the current market value of holdings. Total profit is total assets plus the signed sum of transaction amounts. XIRR measures owner-level cash flows and includes a terminal market-value flow on the valuation date; zero-amount reinvestments are ignored because they are internal to the portfolio. A result is shown as **Not calculable** if prices are missing or cash flows lack both signs.
 

@@ -70,7 +70,6 @@ def refresh_prices(
         query = (
             select(Security)
             .join(Transaction, Transaction.security_id == Security.id)
-            .where(Transaction.deleted_at.is_(None))
         )
         if portfolio_id is None:
             query = query.join(

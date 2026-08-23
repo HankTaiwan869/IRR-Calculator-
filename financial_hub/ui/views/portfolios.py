@@ -12,10 +12,10 @@ from PyQt6.QtWidgets import (
     QVBoxLayout,
     QWidget,
 )
-from sqlalchemy import and_, delete, func, select
+from sqlalchemy import delete, func, select
 from sqlalchemy.exc import IntegrityError
 
-from ...models import Portfolio, Transaction, TransactionAudit
+from ...models import Portfolio, Transaction
 from ..dialogs import PortfolioDialog
 from ..table_selection import use_check_row_selection
 
@@ -58,10 +58,7 @@ class PortfoliosView(QWidget):
                 select(Portfolio, func.count(Transaction.id))
                 .outerjoin(
                     Transaction,
-                    and_(
-                        Transaction.portfolio_id == Portfolio.id,
-                        Transaction.deleted_at.is_(None),
-                    ),
+                    Transaction.portfolio_id == Portfolio.id,
                 )
                 .group_by(Portfolio.id)
                 .order_by(Portfolio.name)
@@ -133,10 +130,7 @@ class PortfoliosView(QWidget):
             count = session.scalar(
                 select(func.count())
                 .select_from(Transaction)
-                .where(
-                    Transaction.portfolio_id == portfolio_id,
-                    Transaction.deleted_at.is_(None),
-                )
+                .where(Transaction.portfolio_id == portfolio_id)
             )
             name = portfolio.name
         noun = "transaction" if count == 1 else "transactions"
@@ -150,14 +144,6 @@ class PortfoliosView(QWidget):
         if answer != QMessageBox.StandardButton.Yes:
             return
         with self.factory.begin() as session:
-            transaction_ids = select(Transaction.id).where(
-                Transaction.portfolio_id == portfolio_id
-            )
-            session.execute(
-                delete(TransactionAudit).where(
-                    TransactionAudit.transaction_id.in_(transaction_ids)
-                )
-            )
             session.execute(
                 delete(Transaction).where(Transaction.portfolio_id == portfolio_id)
             )

@@ -1,24 +1,19 @@
 from __future__ import annotations
 
-import json
-
 from PyQt6.QtCore import QSortFilterProxyModel, Qt, pyqtSignal
 from PyQt6.QtWidgets import (
-    QDialog,
-    QDialogButtonBox,
     QHBoxLayout,
     QLineEdit,
     QMessageBox,
     QPushButton,
     QTableView,
-    QTextEdit,
     QVBoxLayout,
     QWidget,
 )
 from sqlalchemy import select
 
 from ...exceptions import ValidationError
-from ...models import Portfolio, Security, Transaction, TransactionAudit
+from ...models import Portfolio, Security, Transaction
 from ...services.transactions import (
     delete_transaction,
     edit_transaction,
@@ -42,9 +37,7 @@ class HistoryView(QWidget):
         toolbar.addWidget(self.search, 1)
         self.delete_button = QPushButton("Delete")
         self.delete_button.setObjectName("danger")
-        audit_button = QPushButton("Audit details")
         edit_button = QPushButton("Edit")
-        toolbar.addWidget(audit_button)
         toolbar.addWidget(edit_button)
         toolbar.addWidget(self.delete_button)
         layout.addLayout(toolbar)
@@ -66,7 +59,6 @@ class HistoryView(QWidget):
         layout.addWidget(self.table, 1)
         self.search.textChanged.connect(self.proxy.setFilterFixedString)
         self.delete_button.clicked.connect(self.delete_selected)
-        audit_button.clicked.connect(self.show_audit)
         edit_button.clicked.connect(self.edit_selected)
         self.reload()
 
@@ -76,7 +68,6 @@ class HistoryView(QWidget):
                 select(Transaction, Portfolio.name, Security.symbol)
                 .join(Portfolio, Portfolio.id == Transaction.portfolio_id)
                 .outerjoin(Security, Security.id == Transaction.security_id)
-                .where(Transaction.deleted_at.is_(None))
                 .order_by(Transaction.trade_date.desc(), Transaction.id.desc())
             ).all()
         rows = []
@@ -139,34 +130,3 @@ class HistoryView(QWidget):
             QMessageBox.warning(self, "Edit transaction", str(error))
             return
         self.data_changed.emit()
-
-    def show_audit(self) -> None:
-        transaction_id = self._selected_id()
-        if transaction_id is None:
-            return
-        with self.factory() as session:
-            records = list(
-                session.scalars(
-                    select(TransactionAudit)
-                    .where(TransactionAudit.transaction_id == transaction_id)
-                    .order_by(TransactionAudit.id)
-                )
-            )
-        dialog = QDialog(self)
-        dialog.setWindowTitle("Transaction audit")
-        dialog.resize(720, 480)
-        layout = QVBoxLayout(dialog)
-        text = QTextEdit()
-        text.setReadOnly(True)
-        text.setPlainText(
-            "\n\n".join(
-                f"{item.created_at} — {item.action}\nBefore: {json.dumps(item.before, indent=2)}\nAfter: {json.dumps(item.after, indent=2)}"
-                for item in records
-            )
-            or "No audit entries."
-        )
-        buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Close)
-        buttons.rejected.connect(dialog.reject)
-        layout.addWidget(text)
-        layout.addWidget(buttons)
-        dialog.exec()

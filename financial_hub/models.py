@@ -2,10 +2,8 @@ from __future__ import annotations
 
 from datetime import date, datetime
 from enum import StrEnum
-from typing import Any
 
 from sqlalchemy import (
-    JSON,
     CheckConstraint,
     Date,
     DateTime,
@@ -83,7 +81,6 @@ class Transaction(Base):
     # portfolio boundary.  Opening positions use a negative deemed investment.
     amount: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     source_key: Mapped[str | None] = mapped_column(String(200), unique=True)
-    deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()
     )
@@ -115,20 +112,6 @@ class Quote(Base):
         DateTime(timezone=True), server_default=func.now()
     )
     security: Mapped[Security] = relationship()
-
-
-class TransactionAudit(Base):
-    __tablename__ = "transaction_audit"
-    id: Mapped[int] = mapped_column(primary_key=True)
-    transaction_id: Mapped[int] = mapped_column(
-        ForeignKey("transactions.id"), nullable=False
-    )
-    action: Mapped[str] = mapped_column(String(20), nullable=False)
-    before: Mapped[dict[str, Any] | None] = mapped_column(JSON)
-    after: Mapped[dict[str, Any] | None] = mapped_column(JSON)
-    created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), server_default=func.now()
-    )
 
 
 class SchemaMeta(Base):

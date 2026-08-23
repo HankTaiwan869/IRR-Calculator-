@@ -1,10 +1,9 @@
 from datetime import date
 
 import pytest
-from sqlalchemy import select
 
 from financial_hub.exceptions import ValidationError
-from financial_hub.models import Transaction, TransactionAudit, TransactionKind
+from financial_hub.models import Transaction, TransactionKind
 from financial_hub.services.transactions import (
     TransactionInput,
     create_transaction,
@@ -75,7 +74,7 @@ def test_activity_amount_and_share_rules_are_enforced(db, kind, shares, amount):
         )
 
 
-def test_delete_is_permanent_and_removes_audits(db):
+def test_edit_updates_transaction_and_delete_is_permanent(db):
     _engine, factory, (portfolio_id, security_id) = db
     with factory.begin() as session:
         transaction = create_transaction(session, buy(portfolio_id, security_id))
@@ -85,18 +84,12 @@ def test_delete_is_permanent_and_removes_audits(db):
             session, transaction_id, buy(portfolio_id, security_id, amount=110)
         )
     with factory() as session:
-        audit = session.scalar(select(TransactionAudit))
-        assert audit is not None
-        assert audit.action == "EDIT"
+        edited = session.get(Transaction, transaction_id)
+        assert edited is not None
+        assert edited.amount == -110
     with factory.begin() as session:
         delete_transaction(session, transaction_id)
     with factory() as session:
-        assert [
-            item.action
-            for item in session.scalars(
-                select(TransactionAudit).order_by(TransactionAudit.id)
-            )
-        ] == []
         assert session.get(Transaction, transaction_id) is None
 
 

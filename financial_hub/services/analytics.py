@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections.abc import Iterable
 from dataclasses import dataclass
 from datetime import date
 from decimal import ROUND_HALF_UP, Decimal
@@ -9,9 +10,43 @@ from sqlalchemy import Select, select
 from sqlalchemy.orm import Session
 
 from ..models import Portfolio, Quote, Security, Transaction, TransactionKind
-from .ledger import LedgerResult, replay_ledger
 
 ZERO = 0
+
+
+@dataclass(frozen=True, slots=True)
+class LedgerResult:
+    """Share and paid-dividend totals for one security ledger."""
+
+    shares: int
+    dividend_income: int
+    opening_position_complete: bool
+
+
+def replay_ledger(rows: Iterable[Transaction]) -> LedgerResult:
+    shares = dividends = ZERO
+    opening_complete = True
+    for row in sorted(rows, key=lambda item: (item.trade_date, item.id or 0)):
+        kind = TransactionKind(row.kind)
+        if kind in (
+            TransactionKind.BUY,
+            TransactionKind.REINVESTED_DIVIDEND,
+            TransactionKind.OPENING_POSITION,
+        ):
+            shares += row.shares_delta
+            # Existing databases may contain an opening position with no
+            # historical investment; total profit/IRR are then indeterminate.
+            if kind is TransactionKind.OPENING_POSITION and row.amount >= ZERO:
+                opening_complete = False
+        elif kind is TransactionKind.SELL:
+            shares += row.shares_delta
+        elif kind is TransactionKind.DIVIDEND:
+            dividends += row.amount
+    return LedgerResult(
+        shares=shares,
+        dividend_income=dividends,
+        opening_position_complete=opening_complete,
+    )
 
 
 @dataclass(frozen=True, slots=True)
@@ -36,10 +71,7 @@ class PortfolioSummary:
 def _transactions_query(
     portfolio_id: int | None, valuation_date: date
 ) -> Select[tuple[Transaction]]:
-    query = select(Transaction).where(
-        Transaction.deleted_at.is_(None),
-        Transaction.trade_date <= valuation_date,
-    )
+    query = select(Transaction).where(Transaction.trade_date <= valuation_date)
     if portfolio_id is None:
         return query.join(Portfolio, Transaction.portfolio_id == Portfolio.id).where(
             Portfolio.archived_at.is_(None)
