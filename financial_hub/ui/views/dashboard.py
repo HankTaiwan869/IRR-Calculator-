@@ -58,15 +58,15 @@ class DashboardView(QScrollArea):
         bar = QHBoxLayout()
         self.portfolio = QComboBox()
         self.portfolio.currentIndexChanged.connect(self.reload)
-        refresh = QPushButton("Refresh Prices")
-        refresh.setObjectName("primary")
-        refresh.clicked.connect(
+        self.refresh_button = QPushButton("Refresh Prices")
+        self.refresh_button.setObjectName("primary")
+        self.refresh_button.clicked.connect(
             lambda: self.refresh_requested.emit(self.portfolio.currentData())
         )
         bar.addWidget(QLabel("Portfolio"))
         bar.addWidget(self.portfolio, 1)
         bar.addStretch()
-        bar.addWidget(refresh)
+        bar.addWidget(self.refresh_button)
         layout.addLayout(bar)
 
         grid = QGridLayout()

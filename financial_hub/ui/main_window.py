@@ -44,6 +44,7 @@ class MainWindow(QMainWindow):
         super().__init__(parent)
         self.factory = session_factory
         self.pool = QThreadPool.globalInstance()
+        self._refresh_in_progress = False
         self.setWindowTitle("Financial Hub")
         self.resize(1240, 800)
         self.setMinimumSize(900, 620)
@@ -116,12 +117,12 @@ class MainWindow(QMainWindow):
         self.show_page(0)
 
     def _create_actions(self) -> None:
-        refresh = QAction("Refresh Prices", self)
-        refresh.setShortcut(QKeySequence("Ctrl+R"))
-        refresh.triggered.connect(
+        self.refresh_action = QAction("Refresh Prices", self)
+        self.refresh_action.setShortcut(QKeySequence("Ctrl+R"))
+        self.refresh_action.triggered.connect(
             lambda: self.refresh_prices(self.dashboard.portfolio.currentData())
         )
-        self.addAction(refresh)
+        self.addAction(self.refresh_action)
         new_transaction = QAction("New Transaction", self)
         new_transaction.setShortcut(QKeySequence("Ctrl+N"))
         new_transaction.triggered.connect(
@@ -174,6 +175,8 @@ class MainWindow(QMainWindow):
         self.portfolios.reload()
 
     def refresh_prices(self, portfolio_id: int | None) -> None:
+        if self._refresh_in_progress:
+            return
         try:
             token = get_finmind_token()
         except Exception as error:  # noqa: BLE001 - credential backend boundary
@@ -186,6 +189,9 @@ class MainWindow(QMainWindow):
                 self, "Refresh Prices", "Save a FinMind token under Settings first."
             )
             return
+        self._refresh_in_progress = True
+        self.dashboard.refresh_button.setEnabled(False)
+        self.refresh_action.setEnabled(False)
         self.statusBar().showMessage("Refreshing daily prices…")
         today = datetime.now().astimezone().date()
         worker = FunctionWorker(
@@ -194,25 +200,28 @@ class MainWindow(QMainWindow):
             )
         )
         worker.signals.result.connect(self._refresh_complete)
-        worker.signals.error.connect(
-            lambda error: QMessageBox.warning(self, "Refresh Prices", error)
-        )
-        worker.signals.finished.connect(
-            lambda: self.statusBar().showMessage("Ready", 3000)
-        )
+        worker.signals.error.connect(self._refresh_error)
+        worker.signals.finished.connect(self._refresh_finished)
         self.pool.start(worker)
+
+    def _refresh_error(self, error: str) -> None:
+        self.statusBar().showMessage("Price refresh failed.", 5000)
+        QMessageBox.warning(self, "Refresh Prices", error)
+
+    def _refresh_finished(self) -> None:
+        self._refresh_in_progress = False
+        self.dashboard.refresh_button.setEnabled(True)
+        self.refresh_action.setEnabled(True)
 
     def _refresh_complete(self, result: object) -> None:
         self.dashboard.reload()
         self.projection.reload()
         failures = getattr(result, "failed", ())
         refreshed = len(getattr(result, "refreshed", ()))
-        cached = len(getattr(result, "cached", ()))
-        message = f"Refreshed {refreshed}; already cached {cached}."
+        message = f"Refreshed {refreshed}; failed {len(failures)}."
+        self.statusBar().showMessage(message, 5000)
         if failures:
             message += "\n\nFailures:\n" + "\n".join(
                 f"{symbol}: {error}" for symbol, error in failures
             )
             QMessageBox.warning(self, "Refresh completed with errors", message)
-        else:
-            self.statusBar().showMessage(message, 5000)

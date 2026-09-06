@@ -4,7 +4,7 @@ from dataclasses import dataclass
 from datetime import date, timedelta
 from decimal import ROUND_HALF_UP, Decimal, InvalidOperation
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.dialects.sqlite import insert
 from sqlalchemy.orm import Session, sessionmaker
 
@@ -16,7 +16,6 @@ from ..providers.base import SecuritiesProvider
 @dataclass(frozen=True, slots=True)
 class RefreshResult:
     refreshed: tuple[str, ...]
-    cached: tuple[str, ...]
     failed: tuple[tuple[str, str], ...]
 
 
@@ -79,18 +78,8 @@ def refresh_prices(
             query = query.where(Transaction.portfolio_id == portfolio_id)
         securities = list(session.scalars(query.distinct().order_by(Security.symbol)))
     refreshed: list[str] = []
-    cached: list[str] = []
     failed: list[tuple[str, str]] = []
     for security in securities:
-        with factory() as session:
-            if session.scalar(
-                select(Quote.id).where(
-                    Quote.security_id == security.id,
-                    Quote.refresh_cycle_date == cycle_date,
-                )
-            ):
-                cached.append(security.symbol)
-                continue
         try:
             quote = provider.latest_quote(
                 security.symbol, cycle_date - timedelta(days=10)
@@ -110,11 +99,15 @@ def refresh_prices(
                             Quote.security_id,
                             Quote.market_date,
                         ],
-                        set_={"close": close, "refresh_cycle_date": cycle_date},
+                        set_={
+                            "close": close,
+                            "refresh_cycle_date": cycle_date,
+                            "fetched_at": func.now(),
+                        },
                     )
                 )
                 session.execute(statement)
             refreshed.append(security.symbol)
         except Exception as error:  # noqa: BLE001 - isolate provider failures per symbol
             failed.append((security.symbol, str(error)))
-    return RefreshResult(tuple(refreshed), tuple(cached), tuple(failed))
+    return RefreshResult(tuple(refreshed), tuple(failed))

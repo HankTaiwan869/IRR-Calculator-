@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "financial-hub"
-version = "1.2.0"
+version = "1.2.1"
 description = "Local desktop portfolio tracker for Taiwan securities"
 readme = "README.md"
 requires-python = ">=3.11"

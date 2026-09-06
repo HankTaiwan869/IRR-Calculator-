@@ -28,6 +28,8 @@ The first launch of a fresh default database fetches the FinMind security master
 3. Create portfolios, reconcile the imported security with an opening position, and add transactions.
 4. Use **Refresh Prices** on the Dashboard when you want updated delayed closing prices.
 
+Each refresh requests the latest available prices, including after a successful refresh earlier the same day. Refresh is temporarily disabled while a request is running. Successful requests update the quote for the returned market date; older dates remain stored, and failed requests leave existing prices intact. FinMind may return an unchanged price until a newer close is available, and each refresh uses provider quota.
+
 FinMind is the default data provider. Its `TaiwanStockInfo` and `TaiwanStockPrice` datasets supply the local security master and delayed daily closes. Availability, quotas, and accuracy remain subject to FinMind's service; verify important values independently.
 
 ## Accounting conventions
