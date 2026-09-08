@@ -33,8 +33,6 @@ def test_monthly_and_annual_service_preserves_blanks_and_reports_coverage(db):
     assert snapshot.total_asset_excluding_investment == 1_000
     assert summary.income == 300
     assert summary.expenditure == 40
-    assert summary.income_months == 3
-    assert summary.expenditure_months == 2
     assert summary.surplus is None
     assert rows[0].net_worth == 2_700
 

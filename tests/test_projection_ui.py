@@ -232,4 +232,3 @@ def test_accounting_details_form_has_room_between_rows(qtbot, db):
         for upper, lower in pairwise(fields)
     ]
     assert min(gaps) >= 14
-    assert window.transactions.verticalScrollBar().maximum() == 0

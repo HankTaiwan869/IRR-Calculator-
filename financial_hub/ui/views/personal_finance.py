@@ -441,7 +441,7 @@ class PersonalFinanceView(QWidget):
                 year_item = QTableWidgetItem(str(year))
                 year_item.setFlags(year_item.flags() & ~Qt.ItemFlag.ItemIsEditable)
                 self.yearly_table.setItem(row, 0, year_item)
-                for column in range(1, 9):
+                for column in range(1, 7):
                     item = QTableWidgetItem()
                     if column >= 4:
                         item.setFlags(item.flags() & ~Qt.ItemFlag.ItemIsEditable)
@@ -470,7 +470,7 @@ class PersonalFinanceView(QWidget):
             year_item = QTableWidgetItem(str(year))
             year_item.setFlags(year_item.flags() & ~Qt.ItemFlag.ItemIsEditable)
             self.yearly_table.setItem(row, 0, year_item)
-            for column in range(1, 9):
+            for column in range(1, 7):
                 item = QTableWidgetItem()
                 if column >= 4:
                     item.setFlags(item.flags() & ~Qt.ItemFlag.ItemIsEditable)

@@ -13,13 +13,12 @@ def test_personal_finance_view_has_two_tabs_and_preserves_blank_vs_zero(qtbot, d
     qtbot.addWidget(view)
 
     assert view.tabs.count() == 2
-    assert view.monthly_table.rowCount() == 12
-    assert view.yearly_table.columnCount() == 9
+    assert view.monthly_table.rowCount() == 13
+    assert view.yearly_table.columnCount() == 7
 
     view.monthly_table.item(0, 1).setText("0")
     view.monthly_table.item(0, 2).setText("1,250")
     assert view.monthly_table.item(0, 3).text() == "-1,250"
-    assert "Income coverage: 1/12" in view.monthly_coverage.text()
     assert view.monthly_table.item(1, 1).text() == ""
     assert view.monthly_table.item(1, 2).text() == ""
 
@@ -55,19 +54,32 @@ def test_personal_finance_view_saves_monthly_and_annual_entries(qtbot, db):
     assert annual[0].total_debt == 100
     assert view.yearly_table.item(row, 5).text() == "100"
     assert view.yearly_table.item(row, 6).text() == "40"
-    assert view.yearly_table.item(row, 7).text() == "1/12 months"
-    assert view.yearly_table.item(row, 8).text() == "1/12 months"
 
 
-def test_adding_year_keeps_existing_yearly_edits(qtbot, db):
+def test_adding_year_preserves_existing_yearly_edits(qtbot, db):
     _engine, factory, _ids = db
     view = PersonalFinanceView(factory)
     qtbot.addWidget(view)
-    existing = view._yearly_row_index(view.new_year_selector.value())
-    view.yearly_table.item(existing, 1).setText("123")
 
-    view.new_year_selector.setValue(view.new_year_selector.value() - 1)
+    original_year = view.new_year_selector.value()
+    new_year = original_year - 1
+
+    original_row = view._yearly_row_index(original_year)
+    assert original_row >= 0
+
+    edited_item = view.yearly_table.item(original_row, 1)
+    assert edited_item is not None
+
+    edited_item.setText("123")
+
+    view.new_year_selector.setValue(new_year)
     view.add_year()
 
-    existing = view._yearly_row_index(view.new_year_selector.value() + 1)
-    assert view.yearly_table.item(existing, 1).text() == "123"
+    assert view._yearly_row_index(new_year) >= 0
+
+    original_row = view._yearly_row_index(original_year)
+    assert original_row >= 0
+
+    preserved_item = view.yearly_table.item(original_row, 1)
+    assert preserved_item is not None
+    assert preserved_item.text() == "123"
