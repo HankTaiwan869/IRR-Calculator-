@@ -1,85 +1,141 @@
 # Financial Hub
 
-Financial Hub is a local, English-language PyQt6 desktop application for tracking Taiwan securities and simple personal finances in TWD. It keeps named portfolios, activity-aware transactions, delayed daily prices, owner cash flows, total profit, dividend income, XIRR, 30-year projections, monthly income and expenditure, and yearly personal-finance logs in a local SQLite database.
+[![CI](https://github.com/HankTaiwan869/Personal-Finance-Manager/actions/workflows/ci.yml/badge.svg)](https://github.com/HankTaiwan869/Personal-Finance-Manager/actions/workflows/ci.yml)
 
-The application is for personal record keeping and is not financial advice.
+Financial Hub is a local PyQt desktop application for tracking Taiwan securities and personal finances. It combines portfolio activity, investment returns, compound-growth projections, monthly cash flow, and annual net-worth snapshots in a local SQLite database.
+
+I built it to replace parts of my own spreadsheet-based workflow and to learn software engineering through a project I actually use. Its scope is intentionally personal.
+
+## Screenshots
+
+The main application views are shown below.
+
+| Dashboard | Personal Finance | Projection |
+| --- | --- | --- |
+| ![Portfolio dashboard](docs/screenshots/dashboard.png) | ![Monthly and yearly personal-finance records](docs/screenshots/personal-finance.png) | ![Compound-growth projection](docs/screenshots/projection.png) |
+
+## Key features
+
+- Manage multiple portfolios and record buys, sells, dividends, opening positions, and share reconciliations.
+- Reconstruct holdings from transaction history and calculate market value, profit, dividend income, annual XIRR, and an equivalent monthly return.
+- Refresh Taiwan security metadata and delayed daily closes through FinMind.
+- Explore three adjustable compound-growth scenarios in an interactive Plotly chart.
+- Search, sort, edit, and delete transaction history; archive portfolios without including them in combined active-portfolio results.
+- Record monthly income and spending plus manual annual asset, investment, debt, and net-worth snapshots.
+- Back up the live SQLite database and explicitly import legacy Excel or SQLite cash-flow records.
+- Store the FinMind token in the operating-system keyring rather than the application database.
+
+## Engineering highlights
+
+### Ledger and financial semantics
+
+Holdings are derived by replaying transactions in date-and-ID order instead of maintaining a mutable share balance. Inserts, edits, and deletes are rejected if they would make a holding negative at any point in its history.
+
+Transaction types encode both share movement and owner cash flow. For example, a paid dividend is income, while a reinvested dividend adds shares with no external cash flow. This distinction feeds portfolio profit and XIRR calculations without double-counting internal activity.
+
+### Numeric handling
+
+Share quantities and transaction amounts are stored as whole integers. Quote prices, market values, and projection calculations retain `Decimal` values; TWD values are rounded half-up only for display. Conversion to floating point is deferred until the `pyxirr` API boundary.
+
+### Layered application design
+
+PyQt widgets handle interaction, service modules enforce rules and perform calculations, SQLAlchemy models define persistence, and a provider protocol separates market-data access from the rest of the application. The same transaction service is used by normal entry, editing, and legacy imports.
+
+### Responsive and defensive I/O
+
+FinMind synchronization, connection tests, and quote refreshes run through Qt's thread pool so network requests do not freeze the interface. Refreshes prevent overlap, isolate failures per security, preserve existing quotes after errors, and redact API tokens from provider messages.
+
+SQLite foreign keys, uniqueness rules, check constraints, indexes, and explicit schema validation protect local data. Backups use SQLite's online backup API.
+
+## Architecture
+
+```text
+PyQt views and dialogs
+        |
+        v
+Application services  <---->  Provider interface  <---->  FinMind API
+        |
+        v
+SQLAlchemy models
+        |
+        v
+Local SQLite database
+```
+
+```text
+financial_hub/
+|-- ui/             # Main window, feature views, dialogs, table models, workers
+|-- services/       # Transactions, analytics, quotes, personal-finance rules
+|-- providers/      # Provider contract and FinMind HTTP implementation
+|-- models.py       # SQLAlchemy entities and database constraints
+|-- database.py     # Engine setup, schema checks, sessions, and backup
+`-- data_import.py  # Legacy cash-flow import pipeline
+
+scripts/            # One-time Personal Finance migration/import helpers
+tests/              # Service, persistence, provider, and GUI regression tests
+```
+
+A transaction moves from a form into the service layer for normalization and ledger validation before SQLAlchemy persists it. Dashboard and projection views ask the analytics service to replay that history, select the latest eligible quotes, and derive the displayed results.
+
+## Tech stack
+
+| Area | Technology |
+| --- | --- |
+| Language and packaging | Python 3.11+, `uv` |
+| Desktop UI | PyQt6, Qt WebEngine |
+| Persistence | SQLite, SQLAlchemy 2 |
+| Market data | HTTPX, FinMind API |
+| Analytics and charts | `pyxirr`, `Decimal`, Plotly |
+| Credentials | `keyring` |
+| Testing and CI | pytest, pytest-qt, Ruff, GitHub Actions |
 
 ## Install and run
 
-Python 3.11 or newer and [uv](https://docs.astral.sh/uv/) are required.
+The project is developed primarily for Windows. Install [uv](https://docs.astral.sh/uv/), then run:
 
 ```powershell
+git clone https://github.com/HankTaiwan869/Personal-Finance-Manager.git
+cd Personal-Finance-Manager
 uv sync --dev
 uv run financial-hub
 ```
 
-For a development launch, `uv run python main.py` is equivalent. Run the test suite with:
+The development entry point is equivalent:
 
 ```powershell
+uv run python main.py
+```
+
+`run.bat` is also available as a Windows convenience launcher.
+
+On first launch, the application creates a default portfolio and database, then downloads the FinMind security master in the background. Save a FinMind token under **Settings** before manually synchronizing securities or refreshing prices. The token is stored through `keyring` (Windows Credential Manager on the primary development platform).
+
+Application data is stored at:
+
+```text
+%LOCALAPPDATA%\IRRCalculator\financial-hub.sqlite3
+```
+
+## Testing
+
+```powershell
+uv run ruff check .
 uv run pytest
 ```
 
-The first launch of a fresh default database fetches the FinMind security master and then imports the bundled legacy history. Price refreshes and projection charts remain explicit user actions.
+The test suite uses temporary SQLite databases, mocked HTTP transports/providers, and `pytest-qt`. It exercises the areas where regressions would materially affect results or usability:
 
-## First use
+- transaction signs, validation, backdated edits, and non-negative holdings;
+- ledger replay, decimal valuation, dividends, XIRR edge cases, and projection math;
+- quote updates, retry behavior, provider errors, database constraints, backup, and import/migration paths;
+- PyQt navigation, form behavior, view coordination, sorting, styling, lazy chart loading, and background work.
 
-1. Launch the application. It creates the v1 database, fetches FinMind names, exchanges, and security types, and then imports `legacy-investment.db` against those records.
-2. If FinMind is unavailable, the application remains usable and retries the ordered bootstrap on the next launch. A token can be saved under **Settings** when needed; it is stored by `keyring` in Windows Credential Manager, not in SQLite or preferences.
-3. Create portfolios, reconcile the imported security with an opening position, and add transactions.
-4. Use **Refresh Prices** on the Dashboard when you want updated delayed closing prices.
+GitHub Actions runs Ruff and pytest on pushes and pull requests using Qt's offscreen mode on Ubuntu.
 
-Each refresh requests the latest available prices, including after a successful refresh earlier the same day. Refresh is temporarily disabled while a request is running. Successful requests update the quote for the returned market date; older dates remain stored, and failed requests leave existing prices intact. FinMind may return an unchanged price until a newer close is available, and each refresh uses provider quota.
+## Scope and limitations
 
-FinMind is the default data provider. Its `TaiwanStockInfo` and `TaiwanStockPrice` datasets supply the local security master and delayed daily closes. Availability, quotas, and accuracy remain subject to FinMind's service; verify important values independently.
+Financial Hub is local, single-user, English-language software for Taiwan securities and TWD. Prices are delayed and refreshed manually. It does not provide brokerage synchronization, real-time data, tax reporting, corporate-action automation, cloud sync, multi-currency accounting, or FIFO/LIFO cost-basis reporting.
 
-## Accounting conventions
+The Personal Finance page is a deliberately small companion to the investment tracker, not a complete budgeting or accounting system. The projection is a compound-growth scenario, not a forecast, and the application is not financial advice.
 
-Share quantities and transaction TWD amounts remain whole integers. Cached quote prices are stored as `Decimal` values with two decimal places, and market values, profits, XIRR terminal values, and projections retain those decimals during calculations. User-visible TWD values are rounded to whole dollars using half-up rounding; percentage displays retain decimal places.
-
-- The transaction form asks for unsigned **Shares** and **Amount** values. The selected activity supplies the signs before the signed values are stored in the database.
-- A **buy** stores positive shares and a negative amount.
-- A **sell** stores negative shares and a positive amount.
-- A **paid-out dividend** stores zero shares and a positive amount. Paid-out dividends are included in the reported dividend-income total.
-- A **reinvested dividend** stores positive acquired shares and an amount of zero. It is an internal portfolio action and is not included in dividend-income totals.
-- An **opening position** stores positive shares and a negative amount representing the value invested when tracking begins.
-- A **position reconciliation** stores positive legacy shares and an amount of zero. It restores missing share quantities without creating an owner cash flow or cost basis.
-
-Holdings are derived by replaying transactions in date-and-ID order. Corrections are edits, and deleting a transaction permanently removes it. Transactions that would make a holding negative at any later point are rejected.
-
-Total assets are the current market value of holdings. Total profit is total assets plus the signed sum of transaction amounts. XIRR measures owner-level cash flows and includes a terminal market-value flow on the valuation date; zero-amount reinvestments are ignored because they are internal to the portfolio. A result is shown as **Not calculable** if prices are missing or cash flows lack both signs.
-
-## Personal Finance
-
-The **Personal Finance** page has two tabs:
-
-- **Monthly Income & Expenditure** stores one income and one expenditure value for each month. Enter both as positive whole TWD amounts; an empty field remains different from an explicitly entered zero. Monthly surplus and yearly income, expenditure, and surplus are calculated from these rows.
-- **Yearly Log** stores manually entered total assets excluding investment, total portfolio value, and total debt. Its yearly income and expenditure columns are calculated from the monthly tab and do not change when portfolio prices refresh. Each total shows its own month coverage; a combined surplus is unavailable when the two fields cover different months.
-
-These records are separate from investment transactions and owner cash flows used for XIRR. The page intentionally has no categories, transfer tracking, chart, or Excel-import UI.
-
-## Data, backup, and first-run import
-
-The database and non-secret preferences are stored under:
-
-```text
-%LOCALAPPDATA%\IRRCalculator
-```
-
-The application creates a fresh v1 database under `%LOCALAPPDATA%\IRRCalculator`; it does not automatically migrate an older database. Back up the active database while the application is closed. Price history and personal-finance records are cached in the same database.
-
-The one-time importer reads the original SQLite `log(id, stock_code, time, amount)` table from `legacy-investment.db` after the FinMind security master has been synced. Legacy rows remain signed owner cash amounts in an **Imported portfolio**, and their stock codes are attached to matching FinMind security records. Legacy transaction amounts are rounded to whole TWD using half-up rounding. Because the old data has no shares, reconcile each security with an opening position afterward. The importer is bootstrap functionality, not a general migration or backward-compatibility layer.
-
-For an existing supported v1 database, run these commands once while the application is closed:
-
-```powershell
-.\.venv\Scripts\python.exe -m scripts.migrate_personal_finance
-.\.venv\Scripts\python.exe -m scripts.import_personal_finance
-```
-
-The migration creates the two personal-finance tables in place, keeps investment records, leaves schema version 1 unchanged, and writes a backup before changing the database. The import script loads the monthly and 2024 yearly values read from `Personal Finance.xlsx`; it stores the workbook's displayed income month, converts negative expenditure to positive amounts, preserves blank months, and can be rerun without duplicating rows. Use `--database` and `--workbook` when the defaults need to be changed. The 2024 monthly expenditure total is 244,937 TWD; the workbook's conflicting annual figure of 244,557 TWD is not imported separately.
-
-## Scope
-
-Version 1 is local and single-user, supports Taiwan securities and TWD only, and refreshes delayed prices manually. It does not provide brokerage synchronization, real-time pricing, tax reporting, corporate-action automation, cloud sync, multi-currency accounting, or FIFO/LIFO basis.
-
-The interface is English-only. Chinese security names are retained solely as provider data.
+AI coding agents are one part of my development workflow. I remain responsible for reviewing, understanding, testing, debugging, and maintaining the code.
