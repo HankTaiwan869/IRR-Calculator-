@@ -44,23 +44,20 @@ def test_refresh_blocks_overlap_and_allows_another_attempt(
     qtbot.mouseClick(window.dashboard.refresh_button, Qt.MouseButton.LeftButton)
     assert len(pool.workers) == 1
     assert not window.dashboard.refresh_button.isEnabled()
-    assert not window.refresh_action.isEnabled()
 
-    # Cover button, keyboard action, and direct signal entry points while busy.
+    # Cover button and direct signal entry points while busy.
     qtbot.mouseClick(window.dashboard.refresh_button, Qt.MouseButton.LeftButton)
-    window.refresh_action.trigger()
     window.refresh_prices(None)
     assert len(pool.workers) == 1
 
     pool.workers[0].run()
     assert len(calls) == 1
     assert window.dashboard.refresh_button.isEnabled()
-    assert window.refresh_action.isEnabled()
     assert bool(warnings) == (outcome != "success")
     assert "Refreshing daily prices" not in window.statusBar().currentMessage()
     assert "cached" not in window.statusBar().currentMessage()
 
-    window.refresh_action.trigger()
+    qtbot.mouseClick(window.dashboard.refresh_button, Qt.MouseButton.LeftButton)
     assert len(pool.workers) == 2
     pool.workers[1].run()
     assert len(calls) == 2

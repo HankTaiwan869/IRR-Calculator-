@@ -43,6 +43,7 @@ class MetricCard(QFrame):
 
 class DashboardView(QScrollArea):
     refresh_requested = pyqtSignal(object)
+    projection_requested = pyqtSignal(object)
 
     def __init__(self, session_factory, parent=None) -> None:
         super().__init__(parent)
@@ -63,9 +64,14 @@ class DashboardView(QScrollArea):
         self.refresh_button.clicked.connect(
             lambda: self.refresh_requested.emit(self.portfolio.currentData())
         )
+        self.projection_button = QPushButton("View Projection")
+        self.projection_button.clicked.connect(
+            lambda: self.projection_requested.emit(self.portfolio.currentData())
+        )
         bar.addWidget(QLabel("Portfolio"))
         bar.addWidget(self.portfolio, 1)
         bar.addStretch()
+        bar.addWidget(self.projection_button)
         bar.addWidget(self.refresh_button)
         layout.addLayout(bar)
 

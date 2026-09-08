@@ -9,6 +9,7 @@ from PyQt6.QtWebEngineWidgets import QWebEngineView
 from PyQt6.QtWidgets import (
     QAbstractSpinBox,
     QComboBox,
+    QDialog,
     QDoubleSpinBox,
     QGridLayout,
     QLabel,
@@ -73,7 +74,7 @@ class ProjectionView(QScrollArea):
         layout.addLayout(controls)
 
         self.chart_placeholder = QLabel(
-            "The projection chart loads when this tab is opened."
+            "The projection chart loads when View Projection is opened."
         )
         self.chart_placeholder.setObjectName("muted")
         self.chart_placeholder.setAlignment(Qt.AlignmentFlag.AlignCenter)
@@ -85,6 +86,13 @@ class ProjectionView(QScrollArea):
         for control in self.rates:
             control.valueChanged.connect(self.reload)
         self.reload_portfolios()
+
+    def set_portfolio_id(self, portfolio_id: int | None) -> None:
+        """Select the portfolio supplied by the Dashboard before opening."""
+        if self.portfolio.count() == 0:
+            return
+        index = self.portfolio.findData(portfolio_id)
+        self.portfolio.setCurrentIndex(max(index, 0))
 
     def reload_portfolios(self) -> None:
         selected = self.portfolio.currentData()
@@ -186,3 +194,31 @@ class ProjectionView(QScrollArea):
             config={"displaylogo": False, "responsive": True},
         ).replace("</head>", '<script src="plotly.min.js"></script></head>')
         self.chart.setHtml(html, self._plotly_base_url)
+
+
+class ProjectionDialog(QDialog):
+    """Reusable, lazy-loaded Projection view launched from the Dashboard."""
+
+    def __init__(self, session_factory, parent=None) -> None:
+        super().__init__(parent)
+        self.setWindowTitle("Projection")
+        self.setModal(False)
+        self.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose, False)
+        self.setMinimumSize(760, 520)
+        self.resize(1100, 700)
+
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(8, 8, 8, 8)
+        self.view = ProjectionView(session_factory, self)
+        # Expose the embedded view under a descriptive alias for callers that
+        # treat the dialog as the Projection feature itself.
+        self.projection = self.view
+        layout.addWidget(self.view)
+
+    def open_for_portfolio(self, portfolio_id: int | None) -> None:
+        """Show the dialog and render the chart for the Dashboard selection."""
+        self.view.set_portfolio_id(portfolio_id)
+        self.show()
+        self.raise_()
+        self.activateWindow()
+        self.view.ensure_chart()

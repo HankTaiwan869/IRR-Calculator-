@@ -1,40 +1,24 @@
-from PyQt6.QtCore import Qt, QTimer
+from PyQt6.QtCore import Qt
 from PyQt6.QtGui import QIcon
 
 from financial_hub.app import application_icon_path
 from financial_hub.ui.main_window import MainWindow
 
 
-def test_main_window_navigation_and_deferred_plotly_chart(qtbot, db):
+def test_main_window_navigation_excludes_projection_and_keeps_indexes(qtbot, db):
     _engine, factory, _ids = db
     window = MainWindow(factory)
     qtbot.addWidget(window)
-    assert window.stack.currentIndex() == 0
-    assert window.projection.chart is None
     window.show()
-    qtbot.mouseClick(window.nav_buttons[1], Qt.MouseButton.LeftButton)
-    qtbot.waitUntil(lambda: window.projection.chart is not None, timeout=5000)
-    assert window.stack.currentIndex() == 1
-    assert window.title.text() == "Projection"
-    assert window.projection.chart.metaObject().className() == "QWebEngineView"
-    rendered = []
-    script = "typeof Plotly !== 'undefined' && document.querySelector('.plotly-graph-div') !== null"
+    expected_pages = ("Dashboard", "Transactions", "Portfolios", "History", "Settings")
+    assert window.PAGE_NAMES == expected_pages
+    assert window.stack.count() == len(expected_pages)
+    assert [button.text() for button in window.nav_buttons] == list(expected_pages)
 
-    def check_rendered():
-        def checked(value):
-            if value:
-                rendered.append(True)
-            else:
-                QTimer.singleShot(50, check_rendered)
-
-        window.projection.chart.page().runJavaScript(script, checked)
-
-    check_rendered()
-    qtbot.waitUntil(lambda: bool(rendered), timeout=5000)
-    assert rendered == [True]
-    qtbot.mouseClick(window.nav_buttons[3], Qt.MouseButton.LeftButton)
-    assert window.stack.currentIndex() == 3
-    assert window.title.text() == "Portfolios"
+    for index, page_name in enumerate(expected_pages):
+        qtbot.mouseClick(window.nav_buttons[index], Qt.MouseButton.LeftButton)
+        assert window.stack.currentIndex() == index
+        assert window.title.text() == page_name
 
 
 def test_transaction_table_model():

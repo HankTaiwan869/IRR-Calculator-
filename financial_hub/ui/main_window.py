@@ -1,9 +1,9 @@
 from __future__ import annotations
 
+from collections.abc import Callable
 from datetime import datetime
 
 from PyQt6.QtCore import QThreadPool, QTimer
-from PyQt6.QtGui import QAction, QKeySequence
 from PyQt6.QtWidgets import (
     QHBoxLayout,
     QLabel,
@@ -23,7 +23,7 @@ from .views import (
     DashboardView,
     HistoryView,
     PortfoliosView,
-    ProjectionView,
+    ProjectionDialog,
     SettingsView,
     TransactionsView,
 )
@@ -33,17 +33,28 @@ from .workers import FunctionWorker
 class MainWindow(QMainWindow):
     PAGE_NAMES = (
         "Dashboard",
-        "Projection",
         "Transactions",
         "Portfolios",
         "History",
         "Settings",
     )
 
-    def __init__(self, session_factory, parent=None) -> None:
+    def __init__(
+        self,
+        session_factory,
+        parent=None,
+        *,
+        bootstrap: Callable[[], int] | None = None,
+    ) -> None:
         super().__init__(parent)
         self.factory = session_factory
-        self.pool = QThreadPool.globalInstance()
+        self._worker_pool = QThreadPool(self)
+        self.pool = self._worker_pool
+        self._bootstrap = bootstrap
+        self._closing = False
+        self._close_timer = QTimer(self)
+        self._close_timer.setInterval(50)
+        self._close_timer.timeout.connect(self.close)
         self._refresh_in_progress = False
         self.setWindowTitle("Financial Hub")
         self.resize(1240, 800)
@@ -90,14 +101,17 @@ class MainWindow(QMainWindow):
         main_layout.addLayout(header)
         self.stack = QStackedWidget()
         self.dashboard = DashboardView(self.factory)
-        self.projection = ProjectionView(self.factory)
+        self.projection_dialog = ProjectionDialog(self.factory, self)
+        # Keep the view available for the existing refresh/reload coordination,
+        # but host it in the Dashboard-launched dialog rather than the stack.
+        self.projection = self.projection_dialog.view
         self.transactions = TransactionsView(self.factory)
         self.history = HistoryView(self.factory)
         self.portfolios = PortfoliosView(self.factory)
         self.settings = SettingsView(self.factory)
+        self.settings.pool = self._worker_pool
         for page in (
             self.dashboard,
-            self.projection,
             self.transactions,
             self.portfolios,
             self.history,
@@ -108,43 +122,22 @@ class MainWindow(QMainWindow):
         outer.addWidget(main, 1)
 
         self.dashboard.refresh_requested.connect(self.refresh_prices)
+        self.dashboard.projection_requested.connect(self.show_projection)
         self.transactions.saved.connect(self._reload_data)
         self.history.data_changed.connect(self._reload_data)
         self.portfolios.data_changed.connect(self._reload_data)
         self.settings.data_changed.connect(self._reload_data)
+        self.settings.sync_message.connect(self._security_sync_message)
+        self.sync_retry_button = QPushButton("Retry security download")
+        self.sync_retry_button.clicked.connect(self.settings.retry_sync)
+        self.statusBar().addPermanentWidget(self.sync_retry_button)
+        self.sync_retry_button.hide()
+        self.settings.sync_retry_available.connect(self.sync_retry_button.setVisible)
+        self._bootstrap_timer = QTimer(self)
+        self._bootstrap_timer.setSingleShot(True)
+        self._bootstrap_timer.timeout.connect(self._start_bootstrap)
         self.statusBar().showMessage("Ready")
-        self._create_actions()
         self.show_page(0)
-
-    def _create_actions(self) -> None:
-        self.refresh_action = QAction("Refresh Prices", self)
-        self.refresh_action.setShortcut(QKeySequence("Ctrl+R"))
-        self.refresh_action.triggered.connect(
-            lambda: self.refresh_prices(self.dashboard.portfolio.currentData())
-        )
-        self.addAction(self.refresh_action)
-        new_transaction = QAction("New Transaction", self)
-        new_transaction.setShortcut(QKeySequence("Ctrl+N"))
-        new_transaction.triggered.connect(
-            lambda: self.show_page(self.PAGE_NAMES.index("Transactions"))
-        )
-        self.addAction(new_transaction)
-        focus_search = QAction("Focus History Filter", self)
-        focus_search.setShortcut(QKeySequence("Ctrl+F"))
-        focus_search.triggered.connect(self._focus_history)
-        self.addAction(focus_search)
-        edit = QAction("Edit Selected Transaction", self)
-        edit.setShortcut(QKeySequence("Ctrl+E"))
-        edit.triggered.connect(self._edit_history)
-        self.addAction(edit)
-
-    def _focus_history(self) -> None:
-        self.show_page(self.PAGE_NAMES.index("History"))
-        self.history.search.setFocus()
-
-    def _edit_history(self) -> None:
-        self.show_page(self.PAGE_NAMES.index("History"))
-        self.history.edit_selected()
 
     def show_page(self, index: int) -> None:
         self.stack.setCurrentIndex(index)
@@ -152,20 +145,51 @@ class MainWindow(QMainWindow):
         for button_index, button in enumerate(self.nav_buttons):
             button.setChecked(button_index == index)
         page_name = self.PAGE_NAMES[index]
-        if page_name == "Projection" and self.isVisible():
-            QTimer.singleShot(0, self.projection.ensure_chart)
-        elif page_name == "History":
+        if page_name == "History":
             self.history.reload()
         elif page_name == "Portfolios":
             self.portfolios.reload()
 
+    def show_projection(self, portfolio_id: int | None) -> None:
+        self.projection_dialog.open_for_portfolio(portfolio_id)
+
     def showEvent(self, event) -> None:  # type: ignore[no-untyped-def]
         super().showEvent(event)
-        if (
-            self.PAGE_NAMES[self.stack.currentIndex()] == "Projection"
-            and self.projection.chart is None
-        ):
-            QTimer.singleShot(0, self.projection.ensure_chart)
+        if self._bootstrap is not None and not self._closing:
+            self._bootstrap_timer.start(0)
+
+    def _start_bootstrap(self) -> None:
+        if self._bootstrap is not None and not self._closing:
+            work, self._bootstrap = self._bootstrap, None
+            self.settings.start_security_sync(work)
+
+    def _security_sync_message(self, message: str) -> None:
+        if not self._closing:
+            self.statusBar().showMessage(message)
+
+    def closeEvent(self, event) -> None:  # type: ignore[no-untyped-def]
+        self._closing = True
+        self._bootstrap_timer.stop()
+        if self._worker_pool.activeThreadCount():
+            # Keep widgets alive and process queued signals until workers finish.
+            event.ignore()
+            self.centralWidget().setEnabled(False)
+            self.sync_retry_button.setEnabled(False)
+            self.statusBar().showMessage("Finishing background work before closing…")
+            self._close_timer.start()
+            return
+        self._close_timer.stop()
+        super().closeEvent(event)
+
+    def shutdown(self) -> None:
+        # Explicit QApplication.quit() can bypass closeEvent. Drain workers before
+        # disposing the database or allowing their signal receivers to be destroyed.
+        self._closing = True
+        self._bootstrap_timer.stop()
+        self._worker_pool.waitForDone()
+        engine = getattr(self, "_database_engine", None)
+        if engine is not None:
+            engine.dispose()
 
     def _reload_data(self) -> None:
         self.dashboard.reload_portfolios()
@@ -175,6 +199,8 @@ class MainWindow(QMainWindow):
         self.portfolios.reload()
 
     def refresh_prices(self, portfolio_id: int | None) -> None:
+        # This window coordinates a dashboard-initiated refresh because updated
+        # prices must also be reflected in the Projection view.
         if self._refresh_in_progress:
             return
         try:
@@ -191,7 +217,6 @@ class MainWindow(QMainWindow):
             return
         self._refresh_in_progress = True
         self.dashboard.refresh_button.setEnabled(False)
-        self.refresh_action.setEnabled(False)
         self.statusBar().showMessage("Refreshing daily prices…")
         today = datetime.now().astimezone().date()
         worker = FunctionWorker(
@@ -211,17 +236,19 @@ class MainWindow(QMainWindow):
     def _refresh_finished(self) -> None:
         self._refresh_in_progress = False
         self.dashboard.refresh_button.setEnabled(True)
-        self.refresh_action.setEnabled(True)
 
     def _refresh_complete(self, result: object) -> None:
+        # Refresh both Dashboard & Projection views after the background work succeeds.
         self.dashboard.reload()
         self.projection.reload()
         failures = getattr(result, "failed", ())
-        refreshed = len(getattr(result, "refreshed", ()))
-        message = f"Refreshed {refreshed}; failed {len(failures)}."
+        if not failures:
+            self.statusBar().showMessage("Success", 5000)
+            return
+
+        message = f"Failed to refresh {len(failures)} item(s)."
+        message += "\n\nFailures:\n" + "\n".join(
+            f"{symbol}: {error}" for symbol, error in failures
+        )
         self.statusBar().showMessage(message, 5000)
-        if failures:
-            message += "\n\nFailures:\n" + "\n".join(
-                f"{symbol}: {error}" for symbol, error in failures
-            )
-            QMessageBox.warning(self, "Refresh completed with errors", message)
+        QMessageBox.warning(self, "Refresh completed with errors", message)

@@ -17,7 +17,6 @@ from .database import (
     initialize_database,
     session_factory,
 )
-from .exceptions import FinancialHubError
 from .models import Security
 from .providers import FinMindProvider
 from .services.quotes import sync_security_master
@@ -31,7 +30,7 @@ def application_icon_path() -> Path:
     return Path(__file__).resolve().parent / "assets" / "investment.ico"
 
 
-def bootstrap_new_database(factory) -> None:
+def bootstrap_new_database(factory) -> int:
     """Populate the FinMind security master for a new database."""
     try:
         token = get_finmind_token()
@@ -40,7 +39,7 @@ def bootstrap_new_database(factory) -> None:
     provider = FinMindProvider(token)
 
     with factory.begin() as session:
-        sync_security_master(session, provider)
+        return sync_security_master(session, provider)
 
 
 def build_application(
@@ -73,20 +72,19 @@ def build_application(
     # Explicit database paths are primarily used by tests and tooling.  The
     # bundled first-run bootstrap belongs to the application's fresh default
     # database only, so initialization itself never performs network access.
+    needs_bootstrap = False
     if requested_path.resolve() == default_database_path().resolve():
-        try:
-            with factory() as session:
-                needs_bootstrap = session.scalar(select(Security.id).limit(1)) is None
-            if needs_bootstrap:
-                bootstrap_new_database(factory)
-        except FinancialHubError:
-            # Leave the new database empty and retry the ordered bootstrap on
-            # the next launch when FinMind is reachable.
-            pass
-    window = MainWindow(factory)
+        with factory() as session:
+            needs_bootstrap = session.scalar(select(Security.id).limit(1)) is None
+    window = MainWindow(
+        factory,
+        bootstrap=(lambda: bootstrap_new_database(factory))
+        if needs_bootstrap
+        else None,
+    )
     window.setWindowIcon(icon)
     window._database_engine = engine  # retain engine for application lifetime
-    app.aboutToQuit.connect(engine.dispose)
+    app.aboutToQuit.connect(window.shutdown)
     return app, window
 
 

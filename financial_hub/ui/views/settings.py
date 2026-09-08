@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections.abc import Callable
 from datetime import datetime, timedelta
 
 from PyQt6.QtCore import Qt, QThreadPool, pyqtSignal
@@ -26,11 +27,15 @@ from ..workers import FunctionWorker
 
 class SettingsView(QWidget):
     data_changed = pyqtSignal()
+    sync_message = pyqtSignal(str)
+    sync_retry_available = pyqtSignal(bool)
 
     def __init__(self, session_factory, parent=None) -> None:
         super().__init__(parent)
         self.factory = session_factory
         self.pool = QThreadPool.globalInstance()
+        self._sync_in_progress = False
+        self._retry_work: Callable[[], int] | None = None
         layout = QVBoxLayout(self)
         layout.setContentsMargins(4, 4, 12, 20)
         layout.setSpacing(14)
@@ -43,9 +48,10 @@ class SettingsView(QWidget):
         save = QPushButton("Save Token")
         test = QPushButton("Test Token")
         sync = QPushButton("Sync Security Master")
+        self.sync_button = sync
         sync.setObjectName("primary")
         self.sync_status = QLabel(
-            "Security data is local and never synced during startup."
+            "The security list downloads automatically on first use. You can sync it here later."
         )
         self.sync_status.setObjectName("muted")
         buttons = QHBoxLayout()
@@ -121,28 +127,56 @@ class SettingsView(QWidget):
         self.pool.start(worker)
 
     def sync_master(self) -> None:
+        if self._sync_in_progress:
+            return
         token = self._token_value()
         if not token:
             QMessageBox.information(
                 self, "FinMind", "Enter or save a FinMind token first."
             )
             return
-        self.sync_status.setText("Syncing security master…")
+        factory = self.factory
 
         def work() -> int:
             provider = FinMindProvider(token)
-            with self.factory.begin() as session:
+            with factory.begin() as session:
                 return sync_security_master(session, provider)
 
+        self.start_security_sync(work)
+
+    def start_security_sync(self, work: Callable[[], int]) -> None:
+        if self._sync_in_progress:
+            return
+        self._sync_in_progress = True
+        self._retry_work = work
+        self.sync_button.setEnabled(False)
+        self.sync_retry_available.emit(False)
+        self._set_sync_message("Loading security list…")
         worker = FunctionWorker(work)
         worker.signals.result.connect(self._sync_complete)
-        worker.signals.error.connect(
-            lambda error: self.sync_status.setText(f"Sync failed: {error}")
-        )
+        worker.signals.error.connect(self._sync_error)
+        worker.signals.finished.connect(self._sync_finished)
         self.pool.start(worker)
 
+    def retry_sync(self) -> None:
+        if self._retry_work is not None:
+            self.start_security_sync(self._retry_work)
+
+    def _set_sync_message(self, message: str) -> None:
+        self.sync_status.setText(message)
+        self.sync_message.emit(message)
+
+    def _sync_error(self, error: str) -> None:
+        self._set_sync_message(f"Security list download failed: {error}")
+
+    def _sync_finished(self) -> None:
+        self._sync_in_progress = False
+        self.sync_button.setEnabled(True)
+        self.sync_retry_available.emit(self._retry_work is not None)
+
     def _sync_complete(self, count: object) -> None:
-        self.sync_status.setText(f"Security master updated: {count} records.")
+        self._retry_work = None
+        self._set_sync_message(f"Security master updated: {count} records.")
         self.data_changed.emit()
 
     def backup_database(self) -> None:
