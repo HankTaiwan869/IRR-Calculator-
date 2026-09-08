@@ -129,7 +129,7 @@ class TransactionsView(QScrollArea):
             if dividend
             else "Enter the existing shares and their initial or deemed investment amount."
             if opening
-            else "Enter shares and amount; the selected activity determines their ledger direction."
+            else "Enter shares and amount."
         )
         self._set_applicable(self.shares, not dividend)
         self._set_applicable(self.amount, not (reinvested or reconciliation))
