@@ -1,6 +1,6 @@
 # Financial Hub
 
-Financial Hub is a local, English-language PyQt6 desktop application for tracking Taiwan securities in TWD. It keeps named portfolios, activity-aware transactions, delayed daily prices, owner cash flows, total profit, dividend income, XIRR, and 30-year projections in a local SQLite database.
+Financial Hub is a local, English-language PyQt6 desktop application for tracking Taiwan securities and simple personal finances in TWD. It keeps named portfolios, activity-aware transactions, delayed daily prices, owner cash flows, total profit, dividend income, XIRR, 30-year projections, monthly income and expenditure, and yearly personal-finance logs in a local SQLite database.
 
 The application is for personal record keeping and is not financial advice.
 
@@ -19,7 +19,7 @@ For a development launch, `uv run python main.py` is equivalent. Run the test su
 uv run pytest
 ```
 
-The first launch of a fresh default database fetches the FinMind security master and then imports the bundled legacy history. Price refreshes and charting remain explicit user actions.
+The first launch of a fresh default database fetches the FinMind security master and then imports the bundled legacy history. Price refreshes and projection charts remain explicit user actions.
 
 ## First use
 
@@ -48,6 +48,15 @@ Holdings are derived by replaying transactions in date-and-ID order. Corrections
 
 Total assets are the current market value of holdings. Total profit is total assets plus the signed sum of transaction amounts. XIRR measures owner-level cash flows and includes a terminal market-value flow on the valuation date; zero-amount reinvestments are ignored because they are internal to the portfolio. A result is shown as **Not calculable** if prices are missing or cash flows lack both signs.
 
+## Personal Finance
+
+The **Personal Finance** page has two tabs:
+
+- **Monthly Income & Expenditure** stores one income and one expenditure value for each month. Enter both as positive whole TWD amounts; an empty field remains different from an explicitly entered zero. Monthly surplus and yearly income, expenditure, and surplus are calculated from these rows.
+- **Yearly Log** stores manually entered total assets excluding investment, total portfolio value, and total debt. Its yearly income and expenditure columns are calculated from the monthly tab and do not change when portfolio prices refresh. Each total shows its own month coverage; a combined surplus is unavailable when the two fields cover different months.
+
+These records are separate from investment transactions and owner cash flows used for XIRR. The page intentionally has no categories, transfer tracking, chart, or Excel-import UI.
+
 ## Data, backup, and first-run import
 
 The database and non-secret preferences are stored under:
@@ -56,9 +65,18 @@ The database and non-secret preferences are stored under:
 %LOCALAPPDATA%\IRRCalculator
 ```
 
-The application creates a fresh v1 database under `%LOCALAPPDATA%\IRRCalculator`; an older application database is not migrated or read. Back up the active database while the application is closed. Price history is cached in the same database.
+The application creates a fresh v1 database under `%LOCALAPPDATA%\IRRCalculator`; it does not automatically migrate an older database. Back up the active database while the application is closed. Price history and personal-finance records are cached in the same database.
 
 The one-time importer reads the original SQLite `log(id, stock_code, time, amount)` table from `legacy-investment.db` after the FinMind security master has been synced. Legacy rows remain signed owner cash amounts in an **Imported portfolio**, and their stock codes are attached to matching FinMind security records. Legacy transaction amounts are rounded to whole TWD using half-up rounding. Because the old data has no shares, reconcile each security with an opening position afterward. The importer is bootstrap functionality, not a general migration or backward-compatibility layer.
+
+For an existing supported v1 database, run these commands once while the application is closed:
+
+```powershell
+.\.venv\Scripts\python.exe -m scripts.migrate_personal_finance
+.\.venv\Scripts\python.exe -m scripts.import_personal_finance
+```
+
+The migration creates the two personal-finance tables in place, keeps investment records, leaves schema version 1 unchanged, and writes a backup before changing the database. The import script loads the monthly and 2024 yearly values read from `Personal Finance.xlsx`; it stores the workbook's displayed income month, converts negative expenditure to positive amounts, preserves blank months, and can be rerun without duplicating rows. Use `--database` and `--workbook` when the defaults need to be changed. The 2024 monthly expenditure total is 244,937 TWD; the workbook's conflicting annual figure of 244,557 TWD is not imported separately.
 
 ## Scope
 

@@ -5,12 +5,19 @@ from financial_hub.app import application_icon_path
 from financial_hub.ui.main_window import MainWindow
 
 
-def test_main_window_navigation_excludes_projection_and_keeps_indexes(qtbot, db):
+def test_main_window_navigation_includes_personal_finance_and_keeps_indexes(qtbot, db):
     _engine, factory, _ids = db
     window = MainWindow(factory)
     qtbot.addWidget(window)
     window.show()
-    expected_pages = ("Dashboard", "Transactions", "Portfolios", "History", "Settings")
+    expected_pages = (
+        "Dashboard",
+        "Transactions",
+        "Portfolios",
+        "History",
+        "Personal Finance",
+        "Settings",
+    )
     assert window.PAGE_NAMES == expected_pages
     assert window.stack.count() == len(expected_pages)
     assert [button.text() for button in window.nav_buttons] == list(expected_pages)

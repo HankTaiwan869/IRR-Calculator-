@@ -22,6 +22,7 @@ from ..services.quotes import refresh_prices
 from .views import (
     DashboardView,
     HistoryView,
+    PersonalFinanceView,
     PortfoliosView,
     ProjectionDialog,
     SettingsView,
@@ -36,6 +37,7 @@ class MainWindow(QMainWindow):
         "Transactions",
         "Portfolios",
         "History",
+        "Personal Finance",
         "Settings",
     )
 
@@ -109,12 +111,14 @@ class MainWindow(QMainWindow):
         self.history = HistoryView(self.factory)
         self.portfolios = PortfoliosView(self.factory)
         self.settings = SettingsView(self.factory)
+        self.personal_finance = PersonalFinanceView(self.factory)
         self.settings.pool = self._worker_pool
         for page in (
             self.dashboard,
             self.transactions,
             self.portfolios,
             self.history,
+            self.personal_finance,
             self.settings,
         ):
             self.stack.addWidget(page)
@@ -127,6 +131,7 @@ class MainWindow(QMainWindow):
         self.history.data_changed.connect(self._reload_data)
         self.portfolios.data_changed.connect(self._reload_data)
         self.settings.data_changed.connect(self._reload_data)
+        self.personal_finance.data_changed.connect(self._reload_data)
         self.settings.sync_message.connect(self._security_sync_message)
         self.sync_retry_button = QPushButton("Retry security download")
         self.sync_retry_button.clicked.connect(self.settings.retry_sync)
@@ -149,6 +154,8 @@ class MainWindow(QMainWindow):
             self.history.reload()
         elif page_name == "Portfolios":
             self.portfolios.reload()
+        elif page_name == "Personal Finance":
+            self.personal_finance.reload()
 
     def show_projection(self, portfolio_id: int | None) -> None:
         self.projection_dialog.open_for_portfolio(portfolio_id)
@@ -197,6 +204,7 @@ class MainWindow(QMainWindow):
         self.transactions.reload_context()
         self.history.reload()
         self.portfolios.reload()
+        self.personal_finance.reload_yearly()
 
     def refresh_prices(self, portfolio_id: int | None) -> None:
         # This window coordinates a dashboard-initiated refresh because updated

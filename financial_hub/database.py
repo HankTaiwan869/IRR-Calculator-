@@ -43,9 +43,10 @@ def initialize_database(engine: Engine) -> bool:
     """Create or validate the deliberately single-version v1 schema.
 
     A database with no user tables and ``PRAGMA user_version = 0`` is a fresh
-    database and is initialized in place.  Any populated database that is not
-    already the exact v1 shape is rejected; there is intentionally no
-    migration or compatibility path in this application.
+    database and is initialized in place. Any populated database that is not
+    already the exact v1 shape is rejected. The one-time Personal Finance
+    table addition is performed explicitly with
+    ``python -m scripts.migrate_personal_finance``.
 
     Returns ``True`` when a new schema was created.  The return value lets the
     application run its one-time FinMind/legacy bootstrap without making
@@ -62,6 +63,17 @@ def initialize_database(engine: Engine) -> bool:
         return True
 
     if current != SCHEMA_VERSION or tables != expected:
+        if current == SCHEMA_VERSION and tables == {
+            "portfolios",
+            "securities",
+            "transactions",
+            "quotes",
+        }:
+            raise RuntimeError(
+                "This v1 database is missing the Personal Finance tables. "
+                "Run `python -m scripts.migrate_personal_finance` once, then "
+                "restart the app."
+            )
         actual = current if current else "0 (unversioned)"
         raise RuntimeError(
             f"Unsupported database schema {actual}; this app supports schema "

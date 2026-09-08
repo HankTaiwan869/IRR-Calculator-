@@ -61,3 +61,22 @@ def test_fresh_database_uses_simplified_v1_schema(tmp_path):
     # Re-opening an already-supported v1 database is a no-op.
     initialize_database(engine)
     engine.dispose()
+
+
+def test_old_v1_shape_gets_personal_finance_migration_guidance(tmp_path):
+    path = tmp_path / "old-v1.sqlite3"
+    with sqlite3.connect(path) as connection:
+        connection.executescript(
+            """
+            CREATE TABLE portfolios (id INTEGER PRIMARY KEY, name TEXT NOT NULL);
+            CREATE TABLE securities (id INTEGER PRIMARY KEY, symbol TEXT NOT NULL);
+            CREATE TABLE transactions (id INTEGER PRIMARY KEY, portfolio_id INTEGER NOT NULL);
+            CREATE TABLE quotes (id INTEGER PRIMARY KEY, security_id INTEGER NOT NULL);
+            PRAGMA user_version = 1;
+            """
+        )
+
+    engine = create_database_engine(path)
+    with pytest.raises(RuntimeError, match=r"scripts\.migrate_personal_finance"):
+        initialize_database(engine)
+    engine.dispose()

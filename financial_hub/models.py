@@ -107,3 +107,80 @@ class Quote(Base):
         DateTime(timezone=True), server_default=func.now()
     )
     security: Mapped[Security] = relationship()
+
+
+class MonthlyFinanceRecord(Base):
+    """One manually maintained income/expenditure entry for a calendar month.
+
+    Income and expenditure are deliberately nullable.  A null value means the
+    month has not been reported yet, while zero is a real reported value.  The
+    app stores expenditure as a positive number, matching the personal
+    finance page's input convention.
+    """
+
+    __tablename__ = "personal_finance_monthly"
+    __table_args__ = (
+        UniqueConstraint("year", "month", name="uq_personal_finance_month"),
+        CheckConstraint("year BETWEEN 1 AND 9999", name="ck_personal_finance_year"),
+        CheckConstraint("month BETWEEN 1 AND 12", name="ck_personal_finance_month"),
+        CheckConstraint(
+            "income IS NULL OR income >= 0", name="ck_personal_finance_income"
+        ),
+        CheckConstraint(
+            "expenditure IS NULL OR expenditure >= 0",
+            name="ck_personal_finance_expenditure",
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    year: Mapped[int] = mapped_column(Integer, nullable=False)
+    month: Mapped[int] = mapped_column(Integer, nullable=False)
+    income: Mapped[int | None] = mapped_column(Integer)
+    expenditure: Mapped[int | None] = mapped_column(Integer)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )
+
+
+class AnnualFinanceSnapshot(Base):
+    """The three manually entered annual personal-finance values.
+
+    ``total_asset_excluding_investment`` contains cash and other
+    non-investment assets.  ``total_portfolio_value`` is kept separate so a
+    portfolio price refresh cannot silently change a saved snapshot.
+    """
+
+    __tablename__ = "personal_finance_annual"
+    __table_args__ = (
+        UniqueConstraint("year", name="uq_personal_finance_annual_year"),
+        CheckConstraint(
+            "year BETWEEN 1 AND 9999", name="ck_personal_finance_annual_year"
+        ),
+        CheckConstraint(
+            "total_asset_excluding_investment IS NULL OR total_asset_excluding_investment >= 0",
+            name="ck_personal_finance_assets_nonnegative",
+        ),
+        CheckConstraint(
+            "total_portfolio_value IS NULL OR total_portfolio_value >= 0",
+            name="ck_personal_finance_portfolio_nonnegative",
+        ),
+        CheckConstraint(
+            "total_debt IS NULL OR total_debt >= 0",
+            name="ck_personal_finance_debt_nonnegative",
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    year: Mapped[int] = mapped_column(Integer, nullable=False)
+    total_asset_excluding_investment: Mapped[int | None] = mapped_column(Integer)
+    total_portfolio_value: Mapped[int | None] = mapped_column(Integer)
+    total_debt: Mapped[int | None] = mapped_column(Integer)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )
